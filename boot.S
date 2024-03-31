@@ -2,7 +2,7 @@
 .section .text
 .globl _start;
 .equ ADDROFPAR, 0x7c00+0x1b8+0xc
-.equ AMOUNT, _KERNEL_SECTORS+1
+.equ AMOUNT, _KERNEL_SECTORS+2
 _start:
 xor %ax,%ax
 mov %ax, %ds
@@ -108,7 +108,7 @@ addw $1, 0x600
 movw 0x600, %ax
 movw AMOUNT, %bx
 cmpw %ax,%bx
-ja L
+jl L
 D:
 mov $0x0,%bx
 mov %bx, %ds
