@@ -11,6 +11,7 @@ SECTIONS
 			a20.o (.text)
 			protk.o (.text)
 			longk.o (.text)
+			pci.o (.text)
 		_KERNEL_END = .;
 		_KERNEL_SECTORS = ABSOLUTE(.)/0x200;
 		. = ALIGN(0x1000);

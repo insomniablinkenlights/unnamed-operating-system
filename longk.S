@@ -15,9 +15,9 @@ shr $8, %eax
 xchgw %bx, %bx
 
 call P_ALLOC
-xchgw %bx, %bx
-call P_ALLOC
-xchgw %bx, %bx
+//eax contains a pointer to page info
+call P_FREE
+
 L:
 xchgw %bx, %bx
 jmp L
@@ -41,6 +41,7 @@ L1:
 			movq $0x10000, %r14
 			movq (%r14,%rax,8), %r8
 			andq $0x3FFFF000, %r8
+			
 			//pdpt
 			movq (%r8,%rbx,8), %r8
 			andq $0x3FFFF000, %r8
@@ -60,6 +61,10 @@ L1:
 			//not present:
 			movq %rdx, (%r10, %rcx, 8)	
 			orq $1, (%r10, %rcx, 8)
+
+
+					//TODO: fix so that it returns a pointer to the PT struct rather than the struct itself, so to enable P_FREE!!!
+
 			movq %r10, %rax
 			shl $3, %rcx
 			add %rcx, %rax
@@ -112,7 +117,8 @@ P_ALLOC_END:
 ret
 P_ALLOC_ERR:
 xchgw %bx, %bx
-
 ret
-address_width:
-.byte 0x0
+
+P_FREE:
+
+
