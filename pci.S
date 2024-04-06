@@ -38,23 +38,97 @@ PCI_CONFIG_READ_WORD:
 	.byte 0x0
 PCI_CHECK_VENDOR:
 	//returns vendor in eax
-	//al: bus, ah: slot
+	//al: bus, ah: slot, bl: func
 	push %rbx
 	push %rcx
 	push %rax
-	xor %ebx, %ebx
+	xor %bh, %bh
 	call PCI_CONFIG_READ_WORD
 	mov %eax, %ecx
 	pop %rax
 	cmp $0xFFFF, %ecx
 	je _PCV_R
 	// if vendor isn't nonexistent, read the next word to clear
-	xor %ebx, %ebx
+	xor %bh, %bh
 	mov $2, %bh
 	call PCI_CONFIG_READ_WORD
 	_PCV_R:
-	pop %rbx
 	mov %ecx, %eax
 	pop %rcx
+	pop %rbx
+	ret
+PCI_CHECK_FUNCTION:
+	//al: bus, ah: device, bl: function
+	//returns class code, subclass, prog if, in %ecx
+	push %rax
+	push %rbx
+	mov $0x8, %bh
+	call PCI_CONFIG_READ_WORD
+	mov %eax, %ecx
+	and $0xFFFFFF00, %ecx
+	shr $8, %ecx
+	pop %rbx
+	pop %rax
 	ret
 	
+PCI_GET_HEADER_TYPE:
+	//al: bus, ah: device, bl: function
+	//returns header type in %ecx
+	push %rax
+	push %rbx
+	mov $0xC, %bh
+	call PCI_CONFIG_READ_WORD
+	mov %eax, %ecx
+	and $0xFF0000, %ecx
+	shr $16, %ecx
+	pop %rbx
+	pop %rax
+	ret
+PCI_CHECK_DEVICE:
+	//al: bus, ah: device, edx:memory location to put stuff in
+	//returns device functions in %ds:(%rdx), taking a 32-byte area
+	//null device functions will have top = 0xFF, otherwise top = 0x00
+	push %rdx
+	push %r8
+	push %rbx
+	push %rax
+	push %rax
+	xor %rbx, %rbx
+	_PCD_F_L:
+	movl $0xFFFFFFFF, (%rdx, %rbx, 4)
+	add $1, %ebx
+	cmp $8, %ebx
+	jne _PCD_F_L
+	xor %ebx, %ebx
+	xor %r8, %r8
+	mov (_PCD_FUNCTION), %bl
+	call PCI_CHECK_VENDOR
+	cmp $0xFFFF, %eax
+	je _PCD_R
+	pop %rax
+	push %rax
+	call PCI_CHECK_FUNCTION
+	mov %ecx, (%rdx, %r8, 4)
+	add $1, %r8
+	call PCI_GET_HEADER_TYPE
+	xor $0x80, %ecx
+	cmp $0x0,%ecx
+	je _PCD_R
+	_PCD_FN_L:
+	addb $1, (_PCD_FUNCTION)
+	mov (_PCD_FUNCTION), %bl
+	call PCI_CHECK_VENDOR
+	cmp $0xFFFF, %eax
+	je _PCD_R
+	pop %rax
+	push %rax
+	call PCI_CHECK_FUNCTION
+	mov %ecx, (%rdx, %r8, 4)
+	add $1, %r8
+	cmp $7, %bl
+	jne _PCD_FN_L
+	
+	_PCD_R:
+	ret
+	_PCD_FUNCTION:
+	.byte 0x0
