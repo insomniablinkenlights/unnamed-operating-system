@@ -106,9 +106,9 @@ rep movsb
 
 addw $1, 0x600
 movw 0x600, %ax
-movw AMOUNT, %bx
+movw $AMOUNT, %bx
 cmpw %ax,%bx
-jl L
+jg L
 D:
 mov $0x0,%bx
 mov %bx, %ds

@@ -1,6 +1,7 @@
 .code64
 .section .text
 .global PCI_CONFIG_READ_WORD
+.global PCI_CHECK_DEVICE
 PCI_CONFIG_READ_WORD:
 	//al: bus, ah: slot, bl: func, bh: offset
 	//returns word of god in eax
@@ -8,23 +9,23 @@ PCI_CONFIG_READ_WORD:
 	push %rcx
 	push %rdx
 
-	movb %bh, (_PCRW_O)
-	andb $2, (_PCRW_O)
-	shlb $3, (_PCRW_O)	
+	movb %bh, (_PCRW_O+0x7c00)
+	andb $2, (_PCRW_O+0x7c00)
+	shlb $3, (_PCRW_O+0x7c00)	
 	and $0xFFFC, %ebx
-	orl %ebx, (_PCRW_AD)
+	orl %ebx, (_PCRW_AD+0x7c00)
 	mov %ah, %bl
 	shl $11, %ebx
-	orl %ebx, (_PCRW_AD)
+	orl %ebx, (_PCRW_AD+0x7c00)
 	and $0xFF00, %eax
 	shl $16, %eax
-	or %eax, (_PCRW_AD)
-	movl (_PCRW_AD), %eax
+	or %eax, (_PCRW_AD+0x7c00)
+	movl (_PCRW_AD+0x7c00), %eax
 	mov $0xcf8, %dx
 	out %eax, %dx
 	mov $0xCFC, %dx
 	inl %dx, %eax
-	mov (_PCRW_O), %cl
+	mov (_PCRW_O+0x7c00), %cl
 	shr %cl, %eax
 	and $0xFFFF, %eax
 
@@ -67,6 +68,7 @@ PCI_CHECK_FUNCTION:
 	mov %eax, %ecx
 	and $0xFFFFFF00, %ecx
 	shr $8, %ecx
+	and $0x00FFFFFF, %ecx
 	pop %rbx
 	pop %rax
 	ret
@@ -101,7 +103,7 @@ PCI_CHECK_DEVICE:
 	jne _PCD_F_L
 	xor %ebx, %ebx
 	xor %r8, %r8
-	mov (_PCD_FUNCTION), %bl
+	mov (_PCD_FUNCTION+0x7c00), %bl
 	call PCI_CHECK_VENDOR
 	cmp $0xFFFF, %eax
 	je _PCD_R
@@ -111,12 +113,12 @@ PCI_CHECK_DEVICE:
 	mov %ecx, (%rdx, %r8, 4)
 	add $1, %r8
 	call PCI_GET_HEADER_TYPE
-	xor $0x80, %ecx
+	and $0x80, %ecx
 	cmp $0x0,%ecx
 	je _PCD_R
 	_PCD_FN_L:
-	addb $1, (_PCD_FUNCTION)
-	mov (_PCD_FUNCTION), %bl
+	addb $1, (_PCD_FUNCTION+0x7c00)
+	mov (_PCD_FUNCTION+0x7c00), %bl
 	call PCI_CHECK_VENDOR
 	cmp $0xFFFF, %eax
 	je _PCD_R
@@ -129,6 +131,12 @@ PCI_CHECK_DEVICE:
 	jne _PCD_FN_L
 	
 	_PCD_R:
+	pop %rax
+	pop %rax
+	pop %rbx
+	pop %r8
+	pop %rdx
+	
 	ret
 	_PCD_FUNCTION:
 	.byte 0x0

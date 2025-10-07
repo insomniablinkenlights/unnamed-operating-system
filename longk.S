@@ -16,7 +16,19 @@ xchgw %bx, %bx
 
 call P_ALLOC
 //eax contains a pointer to page info
-call P_FREE
+xor %rcx, %rcx
+movl (%rax), %ecx
+mov %rax, %r8
+and $0x3FFFF000, %rcx
+mov %rcx, %rdx
+xor %rax, %rax
+call PCI_CHECK_DEVICE
+mov $1, %ah
+xor %al, %al
+add $4, %rdx
+call PCI_CHECK_DEVICE
+//call P_FREE
+	//TODO
 
 L:
 xchgw %bx, %bx

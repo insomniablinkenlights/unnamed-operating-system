@@ -1,0 +1,19 @@
+eax PCI_CONFIG_READ_WORD(al bus, ah slot, bl func, bh offset)
+	//reads a word from the PCI config register enumerated by operands
+eax PCI_CHECK_VENDOR(al bus, ah slot, bl func)
+	//reads the vendor of the PCI device enumerated by operands. returns 0xFFFF if none.
+ecx PCI_CHECK_FUNCTION(al bus, ah device, bl function)
+	//returns class code, subclass, and prog IF of pci device in ecx
+	//has no way to check if it exists!
+ecx PCI_GET_HEADER_TYPE(al bus, ah device, bl function)
+	//returns header type of pci device, in %ecx
+*%ds:(%rdx) PCI_CHECK_DEVICE [32] (al bus, ah device, *edx location)
+	//returns functions of device in the pointed area, 32 bytes
+	//null device functions will have top=0xFF, otherwise top=0x00
+
+PCI_SCAN
+	//we have to scan through 32 devices per bus and 256 buses - it would be INSANE to do all of them
+	//thus, we will allocate one 4kb page, which can hold 128 devices
+	//it will be full of only existing devices
+	//is it possible to have more than 128 PCI devices? yes, of course
+	//we will modify this code when that is necessary
