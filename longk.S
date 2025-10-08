@@ -21,13 +21,8 @@ movl (%rax), %ecx
 mov %rax, %r8
 and $0x3FFFF000, %rcx
 mov %rcx, %rdx
-xor %rax, %rax
-call PCI_CHECK_DEVICE
-mov $1, %ah
-xor %al, %al
-add $4, %rdx
-call PCI_CHECK_DEVICE
-//call P_FREE
+call PCI_SCAN
+call P_FREE
 	//TODO
 
 L:
@@ -132,5 +127,9 @@ xchgw %bx, %bx
 ret
 
 P_FREE:
-
-
+	//rax: *(struct pt entry)
+	movq $0x0, (%rax)
+	//clear rax to prevent references to freed ptr
+	xor %rax, %rax
+	//TODO	
+	ret
