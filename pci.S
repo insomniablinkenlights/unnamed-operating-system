@@ -247,7 +247,8 @@ PCI_D_STATS:
 	pop %rax
 	call PCI_CHECK_FUNCTION
 	movl %ecx, 8(%rdx, %r11,4)
-	movl $0, 12(%rdx, %r11, 4)
+	call PCI_GET_HEADER_TYPE
+	movl %ecx, 12(%rdx, %r11, 4)
 	add $4, %r11
 	pop %rcx
 	pop %rbx

@@ -23,6 +23,38 @@ and $0x3FFFF000, %rcx
 mov %rcx, %rdx
 call PCI_SCAN
 call P_FREE
+
+//ISA FLOPPY
+/*mov $0x70, %dx
+mov $(1<<7 | 0x10), %al
+xchgw %bx, %bx
+outb %al, %dx
+inb $0x71, %al*/
+
+//test ISA
+//we have a privileged isa pci device so it should emulate it without dma stuff
+//outb $0x0, $0x279
+//outb $0x0, $0x279
+//outb $0x40, $0xA79
+/*OUTL:
+mov $0x0, %al
+mov $0x279, %dx
+outb %al, %dx
+mov $0x5, %al
+outb %al, %dx
+mov $0x203, %dx
+inb %dx, %al
+and $1, %al
+cmp $0, %al
+je OUTL
+mov $0x279, %dx
+mov $0x0, %al
+outb %al, %dx
+mov $0x4, %al
+outb %al, %dx
+mov $0x203, %dx
+inb %dx, %al
+*/
 	//TODO
 
 L:
