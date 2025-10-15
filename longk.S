@@ -14,6 +14,9 @@ and $0xFF00, %eax
 shr $8, %eax
 xchgw %bx, %bx
 
+//set PIC to signal int 0x0-0x7 for 0x20-0x27 as to not map to CPU bs
+call PIC_Remap
+
 call P_ALLOC
 //eax contains a pointer to page info
 xor %rcx, %rcx

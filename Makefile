@@ -1,6 +1,6 @@
 floppya.img: build/Kernel.bin
 	dd if="build/Kernel.bin" of=floppya.img conv=notrunc
-build/Kernel.bin: build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
+build/Kernel.bin: build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
 	cd build && ld -T ../test.ld
 build/realk.o: realk.S
 	as realk.S -o build/realk.o
@@ -16,9 +16,15 @@ build/end.o: end.S
 	as end.S -o build/end.o
 build/pci.o: pci.S
 	as pci.S -o build/pci.o
+build/asmbridge.o: asmbridge.S
+	as asmbridge.S -o build/asmbridge.o
 build/chs.o: build/chs.s
 	as build/chs.s -o build/chs.o
-build/chs.s: chs.c
+build/idt.o: build/idt.s
+	as build/idt.s -o build/idt.o
+build/chs.s: chs.c headers/stdint.h
 	gcc chs.c -S -o build/chs.s -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm
+build/idt.s: idt.c headers/stdint.h
+	gcc idt.c -S -o build/idt.s -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm
 clean:
-	rm build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o build/Kernel.bin
+	rm build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o build/Kernel.bin
