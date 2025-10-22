@@ -15,17 +15,30 @@ shr $8, %eax
 xchgw %bx, %bx
 
 //set PIC to signal int 0x0-0x7 for 0x20-0x27 as to not map to CPU bs
-call PIC_Remap
+//call PIC_Remap
 
-call P_ALLOC
+//call P_ALLOC
+//movq $0x300003, 0x14000
+//movq $0x14023, 0x12008
+call P_ALLOC2
+call FLUSH_TLB
 //eax contains a pointer to page info
-xor %rcx, %rcx
-movl (%rax), %ecx
-mov %rax, %r8
-and $0x3FFFF000, %rcx
-mov %rcx, %rdx
+xchgw %bx, %bx
+
+mov %rax, %rdx
 call PCI_SCAN
+xchgw %bx, %bx
+mov %rax, %rdi
 call P_FREE
+xchgw %bx, %bx
+call P_ALLOC2
+mov %rax, %rdi
+call constructIDT
+//call PIC_Remap
+xchgw %bx, %bx
+movw $0x20, (idtr_64+0x7c00)
+movq %rdi, (idtr_64+0x7c02)
+lidt (idtr_64+0x7c00)
 
 //ISA FLOPPY
 /*mov $0x70, %dx
@@ -63,14 +76,15 @@ inb %dx, %al
 L:
 xchgw %bx, %bx
 jmp L
-
+idtr_64:
+.byte 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
 P_ALLOC:
 //index of pdpt inside pml4
 mov $0, %rax
 cmp $512, %rax
 je P_ALLOC_ERR
-mov $0x14000, %rdx
+mov $0x200000, %rdx
 L1:
 	mov $0, %rbx
 	//index of pde inside pdpt inside pml4
@@ -102,7 +116,7 @@ L1:
 			NP:
 			//not present:
 			movq %rdx, (%r10, %rcx, 8)	
-			orq $1, (%r10, %rcx, 8)
+			orq $3, (%r10, %rcx, 8)
 
 
 					//TODO: fix so that it returns a pointer to the PT struct rather than the struct itself, so to enable P_FREE!!!
@@ -122,7 +136,7 @@ L1:
 			jne L2
 			cnpdpt:
 				movq 8(%r14, %rax, 8), %r9
-				orq $0x01, %r9
+				andq $0x01, %r9
 				cmp $1, %r9
 				jne pa_na
 				add $1, %ax
@@ -130,19 +144,19 @@ L1:
 				pa_na:
 				//allocate memory with %r8
 				movq %rdx, (%r8)
-				orq $0x01, (%r8)
+				orq $0x03, (%r8)
 				mov %rdx, %r13
 				add $0x1000, %rdx
 				//prev is a pde
 				//allocate memory with (8*%cx+%r10)
 				movq %rdx, (%r10, %rcx, 8)
-				orq $0x01, (%r10, %rcx, 8)
+				orq $0x03, (%r10, %rcx, 8)
 				//prev is a pdpt
 				//prev[0] points to mem alloced in %r8
 				mov %r13, %rdx
 				//update next p4 entry
 				movq %rdx, 8(%r14, %rax, 8)
-				orq $0x01, 8(%r14, %rax,8)
+				orq $0x03, 8(%r14, %rax,8)
 				add $0x1000, %rdx
 				add $0x1, %ax
 				jmp L1		
@@ -161,10 +175,3 @@ P_ALLOC_ERR:
 xchgw %bx, %bx
 ret
 
-P_FREE:
-	//rax: *(struct pt entry)
-	movq $0x0, (%rax)
-	//clear rax to prevent references to freed ptr
-	xor %rax, %rax
-	//TODO	
-	ret

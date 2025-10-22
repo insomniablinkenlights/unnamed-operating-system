@@ -64,7 +64,7 @@ mov $(PML4T_A+0x3000), %edi
 mov $0x10, %eax
 mov %eax, %ds
 mov $3, %ebx
-mov $512, %ecx
+mov $511, %ecx
 se:
 movl %ebx, (%edi)
 add $0x1000, %ebx
@@ -81,13 +81,20 @@ mov $0xc0000080, %ecx
 rdmsr
 or $(1<<8), %eax
 wrmsr
+mov $PML4T_A, %eax
+//shl $12, %eax
+mov %eax, %cr3
 //enable paging
 mov %cr0, %eax
-or $(1<<31), %eax
+or $0x80000001, %eax
 mov %eax, %cr0
 //compatibility mode is now enabled
-xchgw %bx, %bx
 lgdt gdtr+0x7c00
+mov $0x10, %ax
+mov %ax, %ds
+mov %ax, %es
+mov %ax, %fs
+mov %ax, %gs
 jmp $0x8, $(_M64+0x7c00)
 .code32
 //cli

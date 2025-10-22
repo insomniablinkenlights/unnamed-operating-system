@@ -34,13 +34,17 @@ void TIMER_INTERRUPT(){
 	PIC_sendEOI(0);
 }
 void constructIDT(void *addr){
-	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //divide error
+	asm volatile("xchgw %bx, %bx");
+	void * a = addr;
+	void * b = *(IDT_ERR_H);
+	asm volatile("xchgw %bx, %bx");
+	newIDTEntry(addr, *(IDT_ERR_H), 0x08, 0x0, 0x8F); //divide error
 	addr+=16;
-	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //debug exception
+	newIDTEntry(addr, *(IDT_ERR_H), 0x08, 0x0, 0x8F); //debug exception
 	addr+=16;
-	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8E); //nmi interrupt
+	newIDTEntry(addr, *(IDT_ERR_H), 0x08, 0x0, 0x8E); //nmi interrupt
 	addr+=16;
-	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //breakpoint
+	newIDTEntry(addr, *(IDT_ERR_H), 0x08, 0x0, 0x8F); //breakpoint
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //overflow
 	addr+=16;
@@ -64,7 +68,7 @@ void constructIDT(void *addr){
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //page fault
 	addr+=16;
-	newIDTEntry(addr, 0x0, 0x0, 0x0, 0x0); //reserved
+	newIDTEntry(addr, (void*)(0x0), 0x0, 0x0, 0x0); //reserved
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //fpu error
 	addr+=16;
@@ -73,11 +77,14 @@ void constructIDT(void *addr){
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //machine check
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //simd exception
+						asm volatile("xchgw %bx, %bx");
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //virtualisation
+						asm volatile("xchgw %bx, %bx");
 	addr+=16;
 	newIDTEntry(addr, *(IDT_ERR_H)+0x7c00, 0x08, 0x0, 0x8F); //control protection exception
 								 //address is now that of 0x15*0x16
+	asm volatile("xchgw %bx, %bx");
 	addr+=16*9;
 	newIDTEntry(addr, *(TIMER_INTERRUPT)+0x7c00, 0x08, 0x0, 0x8E);
 	

@@ -15,6 +15,7 @@ SECTIONS
 			chs.o (.text)
 			idt.o (.text)
 			asmbridge.o (.text)
+			page.o (.text)
 		_KERNEL_END = .;
 		_KERNEL_SECTORS = ABSOLUTE(.)/0x200;
 		. = ALIGN(0x1000);
