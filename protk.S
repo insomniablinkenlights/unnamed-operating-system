@@ -23,14 +23,15 @@
 _PMMain:
 //.byte 0x99, 0x99, 0x99, 0x99
 //lidt idtr
-
+mov $0x7bff, %esp
+mov $0x7bff, %ebp
 mov $0x80000001, %eax
-cpuid
+//cpuid
 and $(0x1<<29), %edx
 mov $(0x1<<29),%ebx
 cmp %edx, %ebx
 //fuck it if we don't have x86_64
-jne _PMMain
+//jne _PMMain
 
 //and now... paging
 //right about today is when I should make a backup of my code, LOL
@@ -78,6 +79,8 @@ mov %eax, %cr4
 //set lm bit
 mov $0xc0000080, %ecx
 //read model specific register
+mov $0x7bff, %esp
+mov $0x7bff, %ebp
 rdmsr
 or $(1<<8), %eax
 wrmsr

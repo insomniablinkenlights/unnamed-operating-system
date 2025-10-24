@@ -8,11 +8,14 @@ four level tree, first node 0x10000
 we need a system to check if a node is taken
 page format?
 */
+mov $0x7bff, %rsp
+mov $0x7bff, %rbp
 mov $0x80000008, %eax
-cpuid
+//cpuid
 and $0xFF00, %eax
 shr $8, %eax
-xchgw %bx, %bx
+mov $0x10, %bx
+mov %bx, %ss
 
 //set PIC to signal int 0x0-0x7 for 0x20-0x27 as to not map to CPU bs
 //call PIC_Remap
@@ -21,24 +24,23 @@ xchgw %bx, %bx
 //movq $0x300003, 0x14000
 //movq $0x14023, 0x12008
 call P_ALLOC2
-call FLUSH_TLB
 //eax contains a pointer to page info
-xchgw %bx, %bx
 
 mov %rax, %rdx
 call PCI_SCAN
-xchgw %bx, %bx
 mov %rax, %rdi
 call P_FREE
-xchgw %bx, %bx
 call P_ALLOC2
 mov %rax, %rdi
+push %rax
 call constructIDT
-//call PIC_Remap
-xchgw %bx, %bx
-movw $0x20, (idtr_64+0x7c00)
-movq %rdi, (idtr_64+0x7c02)
+pop %rax
+movw $(0x20*16), (idtr_64+0x7c00)
+movq %rax, (idtr_64+0x7c02)
 lidt (idtr_64+0x7c00)
+sti
+call PIC_Remap
+call PIT_SETFRQ
 
 //ISA FLOPPY
 /*mov $0x70, %dx
@@ -74,7 +76,6 @@ inb %dx, %al
 	//TODO
 
 L:
-xchgw %bx, %bx
 jmp L
 idtr_64:
 .byte 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0

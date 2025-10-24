@@ -13,8 +13,8 @@ SECTIONS
 			longk.o (.text)
 			pci.o (.text)
 			chs.o (.text)
-			idt.o (.text)
 			asmbridge.o (.text)
+			idt.o (.text)
 			page.o (.text)
 		_KERNEL_END = .;
 		_KERNEL_SECTORS = ABSOLUTE(.)/0x200;

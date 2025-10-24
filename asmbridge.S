@@ -1,8 +1,12 @@
 .code64
 .section .text
 .global outb;
+.global inb;
 .global FLUSH_TLB;
 .global FAULT;
+.global IDT_ERR_H;
+.global TIMER_INTERRUPT;
+.global IDT_DIV_ERR;
 outb:
 push %rdx
 push %rax
@@ -10,6 +14,13 @@ mov %di, %dx
 mov %si, %ax
 outb %al, %dx
 pop %rax
+pop %rdx
+ret
+inb:
+push %rdx
+xor %rax, %rax
+mov %di, %dx
+inb %dx, %al
 pop %rdx
 ret
 FLUSH_TLB:
@@ -22,3 +33,24 @@ FAULT:
 xchgw %bx, %bx
 nop
 jmp FAULT
+
+IDT_ERR_H:
+xchgw %bx, %bx
+mov $1, %bx
+jmp FAULT
+nop
+iretq
+
+TIMER_INTERRUPT:
+xchgw %bx, %bx
+push %rdi
+xor %rdi, %rdi
+call PIC_sendEOI
+pop %rdi
+iretq
+
+IDT_DIV_ERR:
+xchgw %bx, %bx
+mov $2, %bx
+jmp FAULT
+iretq
