@@ -29,6 +29,6 @@ build/page.s: page.c headers/stdint.h
 build/page.o: build/page.s
 	as build/page.s -o build/page.o
 build/idt.s: idt.c headers/stdint.h
-	gcc idt.c -S -o build/idt.s -static -fno-pic -fplt -Wall -Wextra -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow -mno-red-zone -mgeneral-regs-only -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm
+	gcc idt.c -S -o build/idt.s -static -fno-pic -fplt  -m64 -mcmodel=large -Wall -Wextra -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow -mno-red-zone -mgeneral-regs-only -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm
 clean:
 	rm build/page.o build/page.s build/chs.s build/idt.s build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o build/Kernel.bin

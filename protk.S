@@ -4,7 +4,7 @@
 .global idtr;
 
 .macro idte offset, selector, gate, dpl, offset2
-.word (\offset+0x7c00)
+.word (\offset+0x00)
 .word \selector
 .byte 0x0
 .byte (\gate & 0xf) | (\dpl&0x3)<<5 | 128
@@ -50,6 +50,7 @@ mov $0x10, %eax
 mov %eax, %ds
 //2mb is one PDT entry (PML4T->PDPT->PDT->PT)
 //we can't use the last 3 hex digits, not that we were plannign on it
+movl $((PML4T_A+0x1000) |0x3), 8(%edi)
 movl $((PML4T_A+0x1000) |0x3), (%edi)
 mov $(PML4T_A+0x1000),%edi
 
@@ -65,7 +66,7 @@ mov $(PML4T_A+0x3000), %edi
 mov $0x10, %eax
 mov %eax, %ds
 mov $3, %ebx
-mov $511, %ecx
+mov $512, %ecx
 se:
 movl %ebx, (%edi)
 add $0x1000, %ebx
@@ -92,13 +93,13 @@ mov %cr0, %eax
 or $0x80000001, %eax
 mov %eax, %cr0
 //compatibility mode is now enabled
-lgdt gdtr+0x7c00
+lgdt gdtr
 mov $0x10, %ax
 mov %ax, %ds
 mov %ax, %es
 mov %ax, %fs
 mov %ax, %gs
-jmp $0x8, $(_M64+0x7c00)
+jmp $0x8, $(_64STUB)
 .code32
 //cli
 F:
@@ -108,7 +109,7 @@ xchgw %bx, %bx
 jmp F
 idtr:
 .word (inth-idtb)-1
-.long idtb+0x7c00
+.long idtb
 //change first two zeroes to size of itdb LATER !
 idtb:
 //divide error
@@ -148,7 +149,7 @@ iret
 //gdtr: .byte 0x0,0x0,0x0,0x0,0x0,0x0
 gdtr:
 .word tss-gdtb-1
-.quad gdtb+0x7c00
+.quad gdtb
 gdtb:
 gdte 0x0,0x0,0x0,0x0
 gdte 0xFFFFF, 0x0, 0x9A, 0xA
@@ -156,10 +157,20 @@ gdte 0xFFFFF, 0x0, 0x92, 0xc
 gdte 0xFFFFF, 0x0, 0xFA, 0xA
 gdte 0xFFFFF, 0x0, 0xF2, 0xC
 .word 0x67
-.word tss+0x7c00
+.word tss
 .byte 0x0
 .byte 0x89
 .byte 0x0
 .word 0x0,0x0, 0x0, 0x0
 tss:
 .space 0x68, 0x0
+
+.code64
+.section .text
+_64STUB:
+movabsq $_M64, %rax
+jmp %rax
+//push $0x08
+//movabsq $_M64, %rax
+//push %rax
+//lretq

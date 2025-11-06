@@ -14,17 +14,11 @@ mov $0x1B8,%cx
 rep movsb
 ljmp $0x60, $aftercopy
 aftercopy:
+mov $0x7bff, %sp
 //movb $97, %al
 //movb $0x0e, %ah
 //int $0x10
-/*movb $8, %ah
-movb $0, %dl
-int $0x13
-movb %dh, 0x600
-andb $0x3f, %cl
-movb %cl, 0x601
-*/
-mov $0x7c00,%ax
+mov $0x7c0,%ax
 mov %ax,%es
 mov $2, %ah
 mov $AMOUNT, %al
@@ -32,14 +26,14 @@ mov $0, %ch
 mov $1,%cl
 mov $0,%dh
 xor %bx,%bx
-mov $0x1, %dl
+mov $0x0, %dl
 int $0x13
-jnc D
+//jnc D
 
 //parse partitions???
 jmp R
 toCHS:
-//cylinder: == LBA mod (HPC * SPT)
+//cylinder: == LBA/SPT/NOH
 movw 0x600, %ax
 mov $36,%bl
 div %bl
@@ -58,7 +52,7 @@ movw 0x600,%ax
 mov $18,%bl
 div %bl
 add $1, %ah
-mov %ah,0x604
+movb %ah,0x604
 jmp C
 R:
 movw $1, 0x600
@@ -85,24 +79,27 @@ xor %bx, %bx
 mov $2, %ah
 mov $1, %al
 xor %cx,%cx
-mov 0x602,%ch
-mov 0x604, %cl
-mov 0x603, %dh
-mov $0, %dl
+movb 0x602,%ch
+movb 0x604, %cl
+movb 0x603, %dh
+mov $0x0, %dl
 int $0x13
 
 jc D
-mov $0x600, %ax
-mov %ax, %ds
-mov $0x0,%si
 mov 0x600,%ax
 //add $1, %ax
 shl $5,%ax
 add $0x7c0,%ax
 mov %ax, %es
+mov $0x600, %ax
+mov %ax, %ds
+mov $0x0,%si
+
 mov $0x0,%di
 mov $0x200,%cx
 rep movsb
+xor %ax, %ax
+mov %ax, %ds
 
 addw $1, 0x600
 movw 0x600, %ax

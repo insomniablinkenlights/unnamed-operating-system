@@ -5,42 +5,56 @@
 .global PCI_SCAN
 PCI_CONFIG_READ_WORD:
 	//al: bus, ah: slot, bl: func, bh: offset
-	//returns word of god in eax
+	//returns word of god in rax
 	push %rbx
 	push %rcx
 	push %rdx
-
-	movb %bh, (_PCRW_O+0x7c00)
-	movl $0x80000000, (_PCRW_AD+0x7c00)
-	andb $2, (_PCRW_O+0x7c00)
-	shlb $3, (_PCRW_O+0x7c00)	
-	and $0xFCFF, %ebx
-	xchgb %bl, %bh
-	orl %ebx, (_PCRW_AD+0x7c00)
+	push %r8
+	push %r9
+	push %r10
+	push %r11
+	movabsq $_PCRW_O, %r10
+	movabsq $_PCRW_AD, %r11
+	xor %r8, %r8
+	movb %bh, %cl
+	movb %cl,  %r8b
+	movq %r8, (%r10)
+	movq $0x80000000, %r9
+	mov %r9, (%r11)
+	andq $2, (%r10)
+	shlq $3, (%r10)	
+	and $0xFF, %rbx
+	shl $8, %rbx
+	mov %r8b, %bl
+	or %rbx, (%r11)
 	mov %ah, %bl
-	and $0xFF, %ebx
-	shl $11, %ebx
-	orl %ebx, (_PCRW_AD+0x7c00)
-	and $0xFF, %eax
-	shl $16, %eax
-	orl %eax, (_PCRW_AD+0x7c00)
-	movl (_PCRW_AD+0x7c00), %eax
+	and $0xFF, %rbx
+	shl $11, %rbx
+	or %rbx, (%r11)
+	and $0xFF, %rax
+	shl $16, %rax
+	or %rax, (%r11)
+	mov (%r11), %rax
 	mov $0xcf8, %dx
 	outl %eax, %dx
 	mov $0xCFC, %dx
 	inl %dx, %eax
-	movb (_PCRW_O+0x7c00), %cl
+	mov (%r11), %r8
+	mov %r8b, %cl
 	shr %cl, %eax
 	and $0xFFFF, %eax
-
+	pop %r11
+	pop %r10
+	pop %r9
+	pop %r8
 	pop %rdx
 	pop %rcx
 	pop %rbx
 	ret
 	_PCRW_AD:
-	.long 0x80000000
+	.quad 0x80000000
 	_PCRW_O:
-	.byte 0x0
+	.quad 0x0
 PCI_CHECK_VENDOR:
 	//returns vendor in eax and device in r12
 	//al: bus, ah: slot, bl: function
@@ -97,7 +111,7 @@ PCI_GET_HEADER_TYPE:
 	pop %rbx
 	pop %rax
 	ret
-PCI_CHECK_DEVICE:
+/*PCI_CHECK_DEVICE:
 	//al: bus, ah: device, edx:memory location to put stuff in
 	//returns device functions in %ds:(%rdx), taking a 32-byte area
 	//null device functions will have top = 0xFF, otherwise top = 0x00
@@ -115,7 +129,7 @@ PCI_CHECK_DEVICE:
 	xor %ebx, %ebx
 	xor %r8, %r8
 	//xchgw %bx, %bx
-	movb $0, (_PCD_FUNCTION+0x7c00)
+	movb $0, (_PCD_FUNCTION+0x00)
 	xor %bl, %bl
 	call PCI_CHECK_VENDOR
 	cmp $0xFFFF, %eax
@@ -130,8 +144,8 @@ PCI_CHECK_DEVICE:
 	cmp $0x0,%ecx
 	je _PCD_R
 	_PCD_FN_L:
-	addb $1, (_PCD_FUNCTION+0x7c00)
-	movb (_PCD_FUNCTION+0x7c00), %bl
+	addb $1, (_PCD_FUNCTION+0x00)
+	movb (_PCD_FUNCTION+0x00), %bl
 	//xchgw %bx, %bx
 	call PCI_CHECK_VENDOR
 	cmp $0xFFFF, %eax
@@ -154,7 +168,7 @@ PCI_CHECK_DEVICE:
 	
 	ret
 	_PCD_FUNCTION:
-	.byte 0x0
+	.byte 0x0*/
 PCI_SCAN:
 	push %rax
 	push %rdx

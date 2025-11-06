@@ -11,6 +11,9 @@ typedef struct InterruptDescriptor64 {
 }InterruptDescriptor64;
 typedef struct Task{
 	uint8_t ring;
+	void * pagetable;
+	uint64_t rip;
+	uint64_t time_to_execute;
 }Task;
 void newIDTEntry(void *addr, void * offset, uint16_t selector, uint8_t ist, uint8_t type_attributes){
 	((InterruptDescriptor64*)addr)->offset_1=((uint64_t)offset)&0xffff;
@@ -46,6 +49,9 @@ void PIC_sendEOI(uint8_t irq){
 void IDT_ERR_H();
 void IDT_DIV_ERR();
 void TIMER_INTERRUPT();
+void IDT_GPF();
+void IDT_DF();
+void IDT_81();
 /*{
 
 	asm volatile("xchgw %bx, %bx;");
@@ -57,27 +63,27 @@ void TIMER_INTERRUPT();
 	PIC_sendEOI(0);
 }*/
 void constructIDT(void *addr){
-	void *IEH = &IDT_ERR_H;
-	void * TI = &TIMER_INTERRUPT;
+#define IEH &IDT_ERR_H
+#define TI  &TIMER_INTERRUPT
 	newIDTEntry(addr, &IDT_DIV_ERR, 0x08, 0x0, 0x8F); //divide error
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //debug exception
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //debug exception
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8E); //nmi interrupt
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8E); //nmi interrupt
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //breakpoint
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //breakpoint
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //overflow
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //overflow
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //bound exceeded
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //bound exceeded
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //invalid opcode
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //invalid opcode
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //device not available
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //device not available
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //double fault
+	newIDTEntry(addr, &IDT_DF, 0x08, 0x0, 0x8F); //double fault
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //coprocessor segment overrun
+	newIDTEntry(addr, &IDT_81, 0x08, 0x0, 0x8F); //coprocessor segment overrun
 	addr+=16;
 	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //invalid tss
 	addr+=16;
@@ -85,7 +91,7 @@ void constructIDT(void *addr){
 	addr+=16;
 	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //stack segment fault
 	addr+=16;
-	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //gpf
+	newIDTEntry(addr, &IDT_GPF, 0x08, 0x0, 0x8F); //gpf
 	addr+=16;
 	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //page fault
 	addr+=16;
@@ -103,7 +109,7 @@ void constructIDT(void *addr){
 	addr+=16;
 	newIDTEntry(addr, (IEH), 0x08, 0x0, 0x8F); //control protection exception
 								 //address is now that of 0x15*0x16
-	addr+=16*9;
+	addr+=16*11;
 	newIDTEntry(addr, (TI), 0x08, 0x0, 0x8E);
 	
 }

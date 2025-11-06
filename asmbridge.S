@@ -7,6 +7,9 @@
 .global IDT_ERR_H;
 .global TIMER_INTERRUPT;
 .global IDT_DIV_ERR;
+.global IDT_GPF;
+.global IDT_DF;
+.global IDT_81;
 outb:
 push %rdx
 push %rax
@@ -52,5 +55,22 @@ iretq
 IDT_DIV_ERR:
 xchgw %bx, %bx
 mov $2, %bx
+jmp FAULT
+iretq
+
+IDT_GPF:
+xchgw %bx, %bx
+mov $3, %bx
+jmp FAULT
+iretq
+IDT_DF:
+xchgw %bx, %bx
+pop %rbx
+mov $0x8, %bx
+jmp FAULT
+iretq
+IDT_81:
+xchgw %bx, %bx
+mov $4, %bx
 jmp FAULT
 iretq

@@ -62,21 +62,21 @@ cli
 xor %eax, %eax
 mov %ds, %ax
 shl $4, %eax
-add $(gdtb+0x7c00), %eax
-mov %eax, (gdtr+0x7c02)
+add $(gdtb+0x00), %eax
+mov %eax, (gdtr+0x02)
 mov $0x30, %eax
-mov %ax, (gdtr+0x7c00)
-lgdt (gdtr+0x7c00)
-lidt idtr+0x7c00
+mov %ax, (gdtr+0x00)
+lgdt (gdtr+0x00)
+lidt idtr+0x00
 mov %cr0, %eax
 or $1, %al
 mov %eax, %cr0
-//.code32 ljmp *(_PMMain+0x7c00)
+//.code32 ljmp *(_PMMain+0x00)
 //ljmp *_PMMain
 //xchgw %bx,%bx
-//.code32 jmpl $0x8, $(_PMMain+0x7c00)
+//.code32 jmpl $0x8, $(_PMMain+0x00)
 .byte 0xea
-.word _PMMain+0x7c00
+.word _PMMain+0x00
 .byte 0x08, 0x00
 
 xor %eax, %eax
@@ -104,7 +104,7 @@ gdte 0xFFFFF,0x0,0xf2,0xC
 //.word 0x0
 .byte 0x6B
 .byte 0x0
-.word tss+0x7c00
+.word tss+0x00
 .byte 0x0
 .byte 0x89
 .byte 0x0
