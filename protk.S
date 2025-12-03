@@ -10,7 +10,7 @@
 .byte (\gate & 0xf) | (\dpl&0x3)<<5 | 128
 .word \offset2
 .endm
-.equ PML4T_A, 0x10000
+.equ PML4T_A, 0x20000
 
 .macro gdte limit, base, byte, flags
 .word \limit&0xFFFF
@@ -150,6 +150,9 @@ iret
 gdtr:
 .word tss-gdtb-1
 .quad gdtb
+gdtr64:
+.word tss-gdtb-1
+.quad gdtb+0x8000000000
 gdtb:
 gdte 0x0,0x0,0x0,0x0
 gdte 0xFFFFF, 0x0, 0x9A, 0xA
@@ -168,6 +171,7 @@ tss:
 .code64
 .section .text
 _64STUB:
+lgdt gdtr64
 movabsq $_M64, %rax
 jmp %rax
 //push $0x08

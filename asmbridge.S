@@ -4,12 +4,35 @@
 .global inb;
 .global FLUSH_TLB;
 .global FAULT;
-.global IDT_ERR_H;
 .global TIMER_INTERRUPT;
-.global IDT_DIV_ERR;
-.global IDT_GPF;
 .global IDT_DF;
-.global IDT_81;
+.global switch_to_task;
+.global current_task_TCB;
+.global CLI;
+.global STI;
+.global HLT;
+.macro UNCLOBBER
+push %rax
+push %rcx
+push %rdx
+push %r8
+push %r9
+push %r10
+push %r11
+push %rsi
+push %rdi
+.endm
+.macro RECLOBBER
+pop %rdi
+pop %rsi
+pop %r11
+pop %r10
+pop %r9
+pop %r8
+pop %rdx
+pop %rcx
+pop %rax
+.endm
 outb:
 push %rdx
 push %rax
@@ -43,34 +66,71 @@ mov $1, %bx
 jmp FAULT
 nop
 iretq
-
 TIMER_INTERRUPT:
-xchgw %bx, %bx
+UNCLOBBER
 push %rdi
 xor %rdi, %rdi
 call PIC_sendEOI
 pop %rdi
+call PIT_IRQ_handler
+RECLOBBER
 iretq
 
-IDT_DIV_ERR:
-xchgw %bx, %bx
-mov $2, %bx
-jmp FAULT
-iretq
-
-IDT_GPF:
-xchgw %bx, %bx
-mov $3, %bx
-jmp FAULT
-iretq
 IDT_DF:
 xchgw %bx, %bx
 pop %rbx
 mov $0x8, %bx
 jmp FAULT
 iretq
-IDT_81:
-xchgw %bx, %bx
-mov $4, %bx
-jmp FAULT
-iretq
+
+switch_to_task:
+push %rbx
+push %rsi
+push %rdi
+push %rbp
+//might also need to save r9-15
+
+movabsq $(current_task_TCB), %rax
+mov (%rax), %rbx
+cmp $0x0, %rbx
+je ST2
+
+mov %rsp, (%rbx)
+movb 24(%rbx), %cl
+cmp $0x0, %cl
+jne ST2
+//replace on list if it's still running
+movb $1, 24(%rbx)
+movabsq $(LAST_THREAD), %rcx
+mov (%rcx), %rdx
+mov %rbx, 16(%rdx)
+mov %rbx, (%rcx)
+jmp ST3
+ST2:
+//i don't know why this is important...
+ST3:
+//load next state
+mov %rdi, %rsi
+movb $0, 24(%rsi)
+mov %rsi, (%rax)
+mov (%rsi), %rsp
+//TODO: do some TSS stuff
+//TODO: do some cr3 stuff
+
+pop %rbp
+pop %rdi
+pop %rsi
+pop %rbx
+ret
+
+CLI:
+cli
+ret
+
+STI:
+sti
+ret
+
+HLT:
+hlt
+ret

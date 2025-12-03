@@ -19,6 +19,10 @@ SECTIONS
 			asmbridge.o (.text)
 			idt.o (.text)
 			page.o (.text)
+			proc.o (.text)
+			malloc.o (.text)
+			idt_bridge.o (.text)
+			memcpy.o (.text)
 		_KERNEL_END_ = .;
 		_KERNEL_SECTORS = ABSOLUTE(.-0x8000007c00)/0x200;
 		/*. = ALIGN(0x1000);

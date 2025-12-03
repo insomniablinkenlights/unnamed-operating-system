@@ -50,7 +50,8 @@ movq %rax, 2(%r9)
 lidt (%r9)
 call PIC_Remap
 call PIT_SETFRQ
-sti
+cli
+//sti
 
 //ISA FLOPPY
 /*mov $0x70, %dx
@@ -84,9 +85,32 @@ mov $0x203, %dx
 inb %dx, %al
 */
 	//TODO
-
+cli
+call initialize_multitasking
+movabsq $L2, %rdi
+call create_kernel_task
+xchgw %bx, %bx
+sti
+//rax: L2
 L:
+//push %rax
+//mov %rax, %rdi
+//call switch_to_task
+nop
+mov $1000000000, %rdi
+call nano_sleep
+xchgw %bx, %bx
+//pop %rax
 jmp L
+L2:
+xchgw %bx, %bx
+mov $1000000000, %rdi
+call nano_sleep
+//push %rax
+//movabsq $(0x8000000000+0x1d000), %rdi
+//call switch_to_task
+//pop %rax
+jmp L2
 idtr_64:
 .byte 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
