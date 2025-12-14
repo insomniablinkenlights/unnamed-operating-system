@@ -23,11 +23,12 @@ _kernelmain:
 //we are at 0x7e00
 
 //first, we set up the stack, at 0x7BFF (?) which is about 29.75 kb and growing downwards to 0x500.
-mov 0x7BFF, %sp
+mov $0x7BFF, %sp
 //notify bios that we will be in 64 bit
 mov $0xec00, %ax
 mov $2, %bl
-int $0x15
+//int $0x15
+mov $0x7bff, %sp
 /*struct data area
 low memory (kb, starting from 0) | 2 bytes
 */
@@ -61,21 +62,21 @@ cli
 xor %eax, %eax
 mov %ds, %ax
 shl $4, %eax
-add $(gdtb+0x7c00), %eax
-mov %eax, (gdtr+0x7c02)
+add $(gdtb+0x00), %eax
+mov %eax, (gdtr+0x02)
 mov $0x30, %eax
-mov %ax, (gdtr+0x7c00)
-lgdt (gdtr+0x7c00)
-lidt idtr+0x7c00
+mov %ax, (gdtr+0x00)
+lgdt (gdtr+0x00)
+lidt idtr+0x00
 mov %cr0, %eax
 or $1, %al
 mov %eax, %cr0
-//.code32 ljmp *(_PMMain+0x7c00)
+//.code32 ljmp *(_PMMain+0x00)
 //ljmp *_PMMain
 //xchgw %bx,%bx
-//.code32 jmpl $0x8, $(_PMMain+0x7c00)
+//.code32 jmpl $0x8, $(_PMMain+0x00)
 .byte 0xea
-.word _PMMain+0x7c00
+.word _PMMain+0x00
 .byte 0x08, 0x00
 
 xor %eax, %eax
@@ -103,7 +104,7 @@ gdte 0xFFFFF,0x0,0xf2,0xC
 //.word 0x0
 .byte 0x6B
 .byte 0x0
-.word tss+0x7c00
+.word tss+0x00
 .byte 0x0
 .byte 0x89
 .byte 0x0

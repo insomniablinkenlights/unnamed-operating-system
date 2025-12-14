@@ -49,7 +49,7 @@ ret
 a20wait2:
 in $0x64,%al
 test $1, %al
-jnz a20wait2
+jz a20wait2
 ret
 
 

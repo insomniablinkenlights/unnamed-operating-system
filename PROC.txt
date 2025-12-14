@@ -1,0 +1,50 @@
+process memory is a 4 level tree stored in system memory
+processes can call PALLOC() or PFREE()
+
+int NPID = 0;
+struct proc {
+	uint64_t proc_pages[512];
+	uint64_t regs [18];
+	uint64_t pid;
+	uint64_t perms;
+	uint8_t priv;
+	void * kern_stack;
+	uint64_t kern_stack_offset;
+	uint8_t priority;
+	uint64_t ttnc;	
+}
+struct proc construct_proc(proc * pa, uint64_t code_size, uint64_t data_size, uint64_t ){
+	pa->proc_pages = P_ALLOC2();
+	(pa->proc_pages)[256] = ???
+	
+}
+a process needs:
+	- memory
+		- code (immutable)
+		- data (mutable)
+		- kernel (no process changes)
+	- registers
+	- PID
+	- perms
+	- priv level
+	- kernel stack
+	- priority level
+	- time to next call
+actually, let's have the kernel in the higher half
+
+
+
+when we enter a user process, we create a new memory map, set idt to point to protected stubs inside it, set up a kernel stack, clear regs, set the protected bit, and jump into the memory map
+that process can call interrupts with its idt
+the interrupts need to load the kernel memory map, jump into the bigger interrupt handler
+bigger int handler needs to do all its shit and then return to the previous state
+unless... the interrupt is a clock! (or a YIELD)
+if the interrupt is a clock, we figure out which process needs to be called next
+so we go through the list of kernel processes first, decrement their ttncs, and do the first one that equals 0
+if none of those have ttnc = 0, we go through user processes and find the lowest priority level that has ttnc 0 
+
+meanwhile, kernel processes need:
+	- registers
+	- stack
+	- time to next call
+

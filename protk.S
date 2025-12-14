@@ -4,13 +4,13 @@
 .global idtr;
 
 .macro idte offset, selector, gate, dpl, offset2
-.word (\offset+0x7c00)
+.word (\offset+0x00)
 .word \selector
 .byte 0x0
 .byte (\gate & 0xf) | (\dpl&0x3)<<5 | 128
 .word \offset2
 .endm
-.equ PML4T_A, 0x10000
+.equ PML4T_A, 0x20000
 
 .macro gdte limit, base, byte, flags
 .word \limit&0xFFFF
@@ -23,14 +23,15 @@
 _PMMain:
 //.byte 0x99, 0x99, 0x99, 0x99
 //lidt idtr
-
+mov $0x7bff, %esp
+mov $0x7bff, %ebp
 mov $0x80000001, %eax
-cpuid
+//cpuid
 and $(0x1<<29), %edx
 mov $(0x1<<29),%ebx
 cmp %edx, %ebx
 //fuck it if we don't have x86_64
-jne _PMMain
+//jne _PMMain
 
 //and now... paging
 //right about today is when I should make a backup of my code, LOL
@@ -49,6 +50,7 @@ mov $0x10, %eax
 mov %eax, %ds
 //2mb is one PDT entry (PML4T->PDPT->PDT->PT)
 //we can't use the last 3 hex digits, not that we were plannign on it
+movl $((PML4T_A+0x1000) |0x3), 8(%edi)
 movl $((PML4T_A+0x1000) |0x3), (%edi)
 mov $(PML4T_A+0x1000),%edi
 
@@ -78,17 +80,26 @@ mov %eax, %cr4
 //set lm bit
 mov $0xc0000080, %ecx
 //read model specific register
+mov $0x7bff, %esp
+mov $0x7bff, %ebp
 rdmsr
 or $(1<<8), %eax
 wrmsr
+mov $PML4T_A, %eax
+//shl $12, %eax
+mov %eax, %cr3
 //enable paging
 mov %cr0, %eax
-or $(1<<31), %eax
+or $0x80000001, %eax
 mov %eax, %cr0
 //compatibility mode is now enabled
-xchgw %bx, %bx
-lgdt gdtr+0x7c00
-jmp $0x8, $(_M64+0x7c00)
+lgdt gdtr
+mov $0x10, %ax
+mov %ax, %ds
+mov %ax, %es
+mov %ax, %fs
+mov %ax, %gs
+jmp $0x8, $(_64STUB)
 .code32
 //cli
 F:
@@ -98,7 +109,7 @@ xchgw %bx, %bx
 jmp F
 idtr:
 .word (inth-idtb)-1
-.long idtb+0x7c00
+.long idtb
 //change first two zeroes to size of itdb LATER !
 idtb:
 //divide error
@@ -137,8 +148,11 @@ iret
 
 //gdtr: .byte 0x0,0x0,0x0,0x0,0x0,0x0
 gdtr:
-.word tss-gdtb-1
-.quad gdtb+0x7c00
+.word tss-gdtb
+.quad gdtb
+gdtr64:
+.word tss-gdtb
+.quad gdtb+0x8000000000
 gdtb:
 gdte 0x0,0x0,0x0,0x0
 gdte 0xFFFFF, 0x0, 0x9A, 0xA
@@ -146,10 +160,29 @@ gdte 0xFFFFF, 0x0, 0x92, 0xc
 gdte 0xFFFFF, 0x0, 0xFA, 0xA
 gdte 0xFFFFF, 0x0, 0xF2, 0xC
 .word 0x67
-.word tss+0x7c00
-.byte 0x0
+.word tss 
+.byte 0x00 
 .byte 0x89
 .byte 0x0
-.word 0x0,0x0, 0x0, 0x0
+.byte 0x0 
+.quad 0x80
+.quad 0x0
 tss:
-.space 0x68, 0x0
+.space 0x4, 0x0
+.quad 0x8000030000
+.space (0x64-0x0c)+2, 0x0
+.word 104
+
+.code64
+.section .text
+_64STUB:
+lgdt gdtr64
+xchgw %bx, %bx
+mov $40, %ax
+ltr %ax
+movabsq $_M64, %rax
+jmp %rax
+//push $0x08
+//movabsq $_M64, %rax
+//push %rax
+//lretq

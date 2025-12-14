@@ -1,0 +1,5 @@
+the kernel is to be PHYSICALLY located at 0x7c00+ but VIRTUALLY located at 0xC0007c00
+the page directory address is 0x10000, but the VIRTUAL one is 0xC0010000
+programs will be physically loaded wherever I want and virtually loaded at 0x0.
+
+to allocate a page: modify VIRTUAL pagetable with PHYSICAL addresses
