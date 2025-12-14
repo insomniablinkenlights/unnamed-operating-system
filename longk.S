@@ -45,7 +45,7 @@ call constructIDT
 pop %rax
 cli
 movabsq $idtr_64, %r9
-movq $(0x21*16), (%r9)
+movq $(0x27*16), (%r9)
 movq %rax, 2(%r9)
 lidt (%r9)
 call PIC_Remap
@@ -87,12 +87,27 @@ inb %dx, %al
 	//TODO
 cli
 call initialize_multitasking
-movabsq $L2, %rdi
-call create_kernel_task
-xchgw %bx, %bx
+//movabsq $L2, %rdi
+//call create_kernel_task
+//xchgw %bx, %bx
 sti
-//rax: L2
+movabsq $0, %rdi
+mov $0x1000, %rsi
+call floppy_read
+mov $0, %rdi
+mov $0x1000, %rsi
+xchgw %bx, %bx
+mov %rax, %rdx
+call floppy_write
+call start_init_task
+//we PF here because L is in a kernel segment -- security !!!
 L:
+nop
+nop
+xchgw %bx, %bx
+jmp L
+//rax: L2
+/*L:
 //push %rax
 //mov %rax, %rdi
 //call switch_to_task
@@ -110,7 +125,7 @@ call nano_sleep
 //movabsq $(0x8000000000+0x1d000), %rdi
 //call switch_to_task
 //pop %rax
-jmp L2
+jmp L2*/
 idtr_64:
 .byte 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 

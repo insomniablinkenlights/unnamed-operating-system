@@ -75,3 +75,4 @@ pop %rsi
 pop %rdx
 pop %rcx
 pop %rax
+iretq

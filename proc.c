@@ -35,7 +35,9 @@ typedef struct thread_control_block{
 	uint64_t ttn;
 	uint64_t time_used;
 	uint8_t irq_waiting_for;
+	uint8_t PL;
 	void * timeout_function;
+	void * file_descriptors;
 } thread_control_block;
 uint64_t last_count;
 thread_control_block* current_task_TCB;
@@ -56,6 +58,9 @@ uint64_t get_time_since_boot(){
 }
 void unlock_stuff (){
 #ifndef SMP
+	if(postpone_task_switches_counter == 0){
+		FAULT();
+	}
 	postpone_task_switches_counter--;
 
 	if(postpone_task_switches_counter == 0){
@@ -216,7 +221,7 @@ thread_control_block * sleeping_task_list;
 void nano_sleep_until(uint64_t t){
 	lock_stuff();
 	if(t<get_time_since_boot()){
-		asm volatile("xchgw %bx, %bx");
+	//	asm volatile("xchgw %bx, %bx");
 		unlock_scheduler();
 		return;
 	}
@@ -277,7 +282,7 @@ void PIT_IRQ_handler(){
 		this_task = next_task;
 		next_task = this_task -> next;
 		if(this_task == next_task){
-			asm volatile("xchgw %bx, %bx; add $1, %bx");
+			ERROR(ERR_TT_NT, 0x0);
 		}
 		if(this_task -> ttn <= TIME){
 			unblock_task(this_task);
@@ -292,7 +297,7 @@ void PIT_IRQ_handler(){
 		this_task = next_task;
 		next_task = this_task ->next;
 		if(this_task -> ttn <= TIME){
-			*(this_task ->rsp+48) = this_task -> timeout_function; //TODO: not sure if this works!
+			*((void**)(this_task ->rsp+48)) = this_task -> timeout_function; //TODO: not sure if this works!
 			unblock_task(this_task);
 		}else{
 			this_task -> next = irqwaiting;
@@ -308,3 +313,11 @@ void PIT_IRQ_handler(){
 	}
 	unlock_stuff(); //after unblocking task it is postponed until HERE, we then call schedule where it errors out
 }
+/*
+ * TSS
+ * tss contains esp0 and ss0
+ * when we switch to kernel mode, esp0 is loaded from tss, data is pushed, etc
+ * this happens AGAIN if a second interrupt happens while in kernel mode
+ * a thread's time slice may end during a syscall, calling scheduler in the middle of the syscall, switching to user mode and calling the same syscall again from a different process
+ * so interrupts will cli, change rsp to process-specific rsp, move shit off esp0 to a new rsp, sti, goto that rsp, do shit, return
+ * */

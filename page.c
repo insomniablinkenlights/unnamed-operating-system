@@ -114,7 +114,11 @@ void * LL_NV(uint64_t index, void * PLM){
 	return PLM+(8*index);
 }
 void PL_SV(uint64_t index, uint8_t val){
-	*(uint64_t*)LL_NV(index/64, PL_MAP_START) |= val << (index%64); //TODO: doesn't deallocate
+	if(val == 0x1) {
+		*(uint64_t*)LL_NV(index/64, PL_MAP_START) |= 1 << (index%64); 
+	}else{
+		*(uint64_t*)LL_NV(index/64, PL_MAP_START) &= ~(1 << (index%64)); 
+	}
 }
 uint64_t PL_FN(){
 	int i = 0;
@@ -298,15 +302,17 @@ void * KP_ALLOC3(){
 	return (void*)0x0;
 }
 
-void P_FREE(uint64_t v_add){
-	uint64_t pt = (v_add&0x1FF000)/0x1000;
-	uint64_t pde = (v_add&(0x200*0x1ff000))/(0x1000*0x200);
-	uint64_t pdpt =( v_add&(0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200);
-	uint64_t pml4 = (v_add&(0x200*0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200*(uint64_t)0x200);
+void P_FREE(void * v_add){
+	uint64_t pt = (((uint64_t)v_add)&0x1FF000)/0x1000;
+	uint64_t pde = (((uint64_t)v_add)&(0x200*0x1ff000))/(0x1000*0x200);
+	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200);
+	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200*(uint64_t)0x200);
+	PL_SV(V2P(v_add)/0x1000, 0x0);
 	get_pdeVP(pml4,pdpt,pde)[pt] = 0x0;
 	if(pt == 0){
 		get_pdptVP(pml4,pdpt)[pde] = 0x0;
 		
 	}
+
 	FLUSH_TLB();
 }

@@ -21,6 +21,7 @@ void * malloc(uint64_t size){
 		FAULT(); //TODO: malloc would need to rearrange the pages
 	}
 	size /= 64;
+	size ++;
 	uint64_t * mcp = ml1;
 	uint8_t m = 0;
 	uint64_t * NA = 0x0;
@@ -38,7 +39,10 @@ void * malloc(uint64_t size){
 						m++;
 						if(m==size){
 							mcp[i*2] ^= ((1<<size)-1)<<(j-size);
-							return (void*)(mcp[i*2+1]+(j-size)*64);
+							((uint64_t*)(mcp[i*2+1]+(j-size)*64))[7] = (uint64_t)(mcp+i*2+1);
+							((uint64_t*)(mcp[i*2+1]+(j-size)*64))[6] = j;
+							((uint64_t*)(mcp[i*2+1]+(j-size)*64))[5] = size;
+							return (void*)(mcp[i*2+1]+(j-size)*64)+64;
 						}
 					}else{m=0;}
 				}
@@ -53,6 +57,9 @@ void * malloc(uint64_t size){
 	}while(mcp[511]!=0x0);	
 	*(NA) = 0xFFFFFFFFFFFFFFFF ^ ((1<<size)-1);
 
-	*(NA+1) = (uint64_t)KPALLOC();
+	*(NA+1) = (uint64_t)KPALLOC(); //TODO: MEMORY LEAK!!!
 	return (void*)(*(NA+1));
+}
+void free(void * ptr){
+	((uint64_t*)ptr)[-1] &= (~(((1<<((uint64_t*)ptr)[-3])-1)<<(((uint64_t*)ptr)[-2]))); //i hope so anyway
 }

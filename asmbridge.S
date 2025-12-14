@@ -134,3 +134,28 @@ ret
 HLT:
 hlt
 ret
+
+.global ERROR
+ERROR:
+xchgw %bx, %bx
+push %rdi
+push %rsi
+call FAULT
+
+.global jump_usermode
+jump_usermode:
+mov $(3|(4*8)), %ax
+mov %ax, %ds
+mov %ax, %es
+mov %ax, %fs
+mov %ax, %gs
+
+mov %rsp, %rax
+push $(3|(4*8))
+push %rax
+pushf
+push $(3|(3*8))
+push %rdi
+iretq
+
+
