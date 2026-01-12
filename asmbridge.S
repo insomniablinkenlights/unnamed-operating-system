@@ -10,6 +10,7 @@
 .global current_task_TCB;
 .global CLI;
 .global STI;
+.global BREAK;
 .global HLT;
 .macro UNCLOBBER
 push %rax
@@ -93,10 +94,12 @@ push %rbp
 movabsq $(current_task_TCB), %rax
 mov (%rax), %rbx
 cmp $0x0, %rbx
+//if we're null then we skip
 je ST2
 
 mov %rsp, (%rbx)
 movb 24(%rbx), %cl
+//if state is 0 then we don't care
 cmp $0x0, %cl
 jne ST2
 //replace on list if it's still running
@@ -114,6 +117,12 @@ mov %rdi, %rsi
 movb $0, 24(%rsi)
 mov %rsi, (%rax)
 mov (%rsi), %rsp
+mov 60(%rsi), %rax
+mov %cr3, %rcx
+cmp %rax, %rcx
+je STDONE
+mov %rax, %cr3
+STDONE:
 //TODO: do some TSS stuff
 //TODO: do some cr3 stuff
 
@@ -158,4 +167,54 @@ push $(3|(3*8))
 push %rdi
 iretq
 
+.global DIV64_32
+DIV64_32:
+mov %rdi, %rax
+shr $32, %rdi
+mov %rdi, %rdx
+div %esi
+ret
+.global MOD64_32
+MOD64_32:
+mov %rdi, %rax
+shr $32, %rdi
+mov %rdi, %rdx
+div %esi
+xor %rax, %rax
+mov %edx, %eax
+ret
+BREAK:
+xchgw %bx, %bx
+xchgw %cx, %cx
+push %rdi
+pop %rdi
+ret
+.global LTR
+LTR:
+mov %rdi, %rax
+ltr %ax
+ret
+.macro CLEARALLREGS
+xor %rax, %rax
+xor %rbx, %rbx
+xor %rcx, %rcx
+xor %rdx, %rdx
+xor %rsi, %rsi
+xor %rdi, %rdi
+.endm
+.global ASMS_UM
+ASMS_UM:
 
+mov $(0x18 |3), %ax
+mov %ax, %ds
+mov %ax, %es
+mov %ax, %fs
+mov %ax, %gs
+mov %rsp, %rax
+push $(0x18|3)
+push $0x10000
+pushf
+push $0x23
+push %rdi
+CLEARALLREGS
+iretq

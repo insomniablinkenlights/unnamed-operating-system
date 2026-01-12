@@ -1,5 +1,24 @@
 #include "headers/stdint.h"
 #include "headers/addresses.h"
+#include "headers/proc.h"
+/*
+ *	IMPORTANT
+ *	when switching between two tasks, the tasks will ALWAYS be in kernel mode, always being interrupt handlers or whatever
+ *	usermode tasks are handled by a kernelmode process which launches them, that process will have the interrupts
+ *	each kernel process thus needs to have a stack of its own and a RSP0 for the TSS.
+ * */
+/*
+ * TSS
+ * tss contains rsp0 and ss0
+ * when we switch to kernel mode, rsp0 is loaded from tss, data is pushed, etc
+ * this happens AGAIN if a second interrupt happens while in kernel mode
+ * a thread's time slice may end during a syscall, calling scheduler in the middle of the syscall, switching to user mode and calling the same syscall again from a different process
+ * so interrupts will cli, change rsp to process-specific rsp, move shit off rsp0 to a new rsp, sti, goto that rsp, do shit, return
+ *
+ * actually that's false
+ * we can simply load in our current rsp to the tss's rsp0 when we switch processes or switch to usermode
+ * because tss's rsp0 is only loaded on priv change :3
+ * */
 long long int IRQ_disable_counter = 0;
 uint64_t task_switches_postponed_flag=0;
 long long int postpone_task_switches_counter=0;
@@ -25,22 +44,8 @@ void lock_stuff(){
 #endif
 }
 void schedule();
-
-typedef struct thread_control_block{
-	void * rsp;
-	void * rsp0;
-	struct thread_control_block * next;
-	uint8_t state;
-	uint8_t priority;
-	uint64_t ttn;
-	uint64_t time_used;
-	uint8_t irq_waiting_for;
-	uint8_t PL;
-	void * timeout_function;
-	void * file_descriptors;
-} thread_control_block;
+thread_control_block * current_task_TCB;
 uint64_t last_count;
-thread_control_block* current_task_TCB;
 thread_control_block * FIRST_THREAD;
 thread_control_block * LAST_THREAD;
 enum task_states {
@@ -284,7 +289,10 @@ void PIT_IRQ_handler(){
 		if(this_task == next_task){
 			ERROR(ERR_TT_NT, 0x0);
 		}
-		if(this_task -> ttn <= TIME){
+		if( this_task -> state == STATE_WAITING_FOR_IRQ){
+			ERROR(ERR_PIT_WFI_MISP, (uint64_t)this_task);
+		}
+		if( this_task -> ttn <= TIME){
 			unblock_task(this_task);
 		}else{
 			this_task->next = sleeping_task_list;
@@ -313,11 +321,4 @@ void PIT_IRQ_handler(){
 	}
 	unlock_stuff(); //after unblocking task it is postponed until HERE, we then call schedule where it errors out
 }
-/*
- * TSS
- * tss contains esp0 and ss0
- * when we switch to kernel mode, esp0 is loaded from tss, data is pushed, etc
- * this happens AGAIN if a second interrupt happens while in kernel mode
- * a thread's time slice may end during a syscall, calling scheduler in the middle of the syscall, switching to user mode and calling the same syscall again from a different process
- * so interrupts will cli, change rsp to process-specific rsp, move shit off esp0 to a new rsp, sti, goto that rsp, do shit, return
- * */
+

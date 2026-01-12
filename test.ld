@@ -24,6 +24,7 @@ SECTIONS
 			idt_bridge.o (.text)
 			memcpy.o (.text)
 			filesystem.o (.text)
+			usermode.o (.text)
 		_KERNEL_END_ = .;
 		_KERNEL_SECTORS = ABSOLUTE(.-0x8000007c00)/0x200;
 		/*. = ALIGN(0x1000);

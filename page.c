@@ -19,9 +19,9 @@ uint64_t get_pdptV(int pml4, int pdpt){ //return value: integer content of pdpt
 }
 uint64_t get_pdeV(int pml4, int pdpt, int pde){ //return value: integer content of pde
 	return manualptVlookup((get_pdptV(pml4,pdpt)&(~0xFFF)))[pde];
-}uint64_t * get_pdptVP(int pml4, int pdpt){ //return value: pointer to first guy in pde
+}uint64_t * get_pdptVP(int pml4, int pdpt){ //return value: pointer to first guy in pdpt
 	return manualptVlookup(get_pdptV(pml4, pdpt)&(~0xFFF));
-}uint64_t * get_pml4VP(int pml4){ //return value: pointer to first guy in pde
+}uint64_t * get_pml4VP(int pml4){ //return value: pointer to first guy in pml4
 	return manualptVlookup(get_pml4V(pml4)&(~0xFFF));
 }
 
@@ -36,7 +36,7 @@ uint64_t get_ptV(int pml4, int pdpt, int pde, int pt){
 #if PTV_MEMORYOVERHEAD==0
 	return manualptVlookup((get_pdeV(pml4,pdpt,pde)&(~0xFFF)))[pt];
 #else
-	FAULT(); // unimplemented -- illusion of choice :3
+	ERROR(PAGE_ALLOC_SHOULDNOTEXIST,0x0); // unimplemented -- illusion of choice :3
 #endif
 }
 uint64_t construct_virtual_address(uint64_t pml4, uint64_t pdpt, uint64_t pde, uint64_t pt){
@@ -58,11 +58,11 @@ void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 		}
 	}
 	if(k == 0x0){
-		FAULT();
+		ERROR(ERR_KPALLOC_NOFREE,0x0);
 	}
 	if(AN >= 32){
 		if(!PA_CALLING){
-			for(int i = 0; i<32; i++){
+			for(int i = 0; i<64; i++){
 				if(((uint64_t*)(MBASE+0x16000))[i]!=0x0) continue;
 				((uint64_t*)(MBASE+0x16000))[i] = (uint64_t)KP_ALLOC3();
 			}
@@ -108,31 +108,41 @@ void * LL_NV(uint64_t index, void * PLM){
 	if(index > 510){
 		if(((uint64_t*)PLM)[511] == 0x0){
 			((uint64_t*)PLM)[511] = (uint64_t)KPALLOC();
+			memfill((uint64_t*)(((uint64_t*)(PLM))[511]), 0x1000);
 		}
 		return LL_NV(index-511, (void*)(((uint64_t*)PLM)[511]));
 	}
-	return PLM+(8*index);
+	return (void*)((char*)(PLM)+sizeof(uint64_t)*index);
 }
 void PL_SV(uint64_t index, uint8_t val){
 	if(val == 0x1) {
-		*(uint64_t*)LL_NV(index/64, PL_MAP_START) |= 1 << (index%64); 
+		*(uint64_t*)LL_NV(index>>6, PL_MAP_START) |= 1 << (index&63); 
 	}else{
-		*(uint64_t*)LL_NV(index/64, PL_MAP_START) &= ~(1 << (index%64)); 
+		*(uint64_t*)LL_NV(index>>6, PL_MAP_START) &= ~(1 << (index&63)); 
 	}
 }
 uint64_t PL_FN(){
-	int i = 0;
+	uint64_t i = 0;
 	uint64_t * PT = PL_MAP_START;
 	while(1){
 		for(int j = 0; j<511; j++){
 			if(PT[j] != 0xFFFFFFFFFFFFFFFF){
 			//	while(!((PT[j]>>((i++)%64))&0x1)); return i;
-				return i + __builtin_ctzll(~PT[j]);
+				int m = 0;
+				while((PT[j]&(1<<m)) != 0x0){
+					m++;
+				}
+				if(m != __builtin_ctzll(~PT[j])){
+					ERROR(ERR_PL_FN_MISMATCH, m);
+				}
+				return i+m;
+				//return i + __builtin_ctzll(~PT[j]);
 			}
 			i+=64;
 		}
 		if(PT[511]==0x0){
 			PT[511]=(uint64_t)KPALLOC();
+			memfill((uint64_t*)(PT[511]), 0x1000);
 		}
 		PT=(uint64_t*)(PT[511]);
 	}
@@ -164,10 +174,29 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 	uint64_t ad = PL_FN(); //here is our PHYSICAL address
 	PL_SV(ad, 0x1);
 	for(int pml4 = 0; pml4<1; pml4++){
+		if((get_pml4V(pml4)&0x1) == 0x0){ //if our pml4 doesn't exist, we create it
+			uint64_t * M = KPALLOC();
+			memfill(M, 0x1000);
+			((uint64_t*)(MBASE+0x10000))[pml4] = (V2P(M))|0x1; //should allocate it with kernel shit
+			FLUSH_TLB();
+		}
 		for(int pdpt = 0; pdpt<512; pdpt++){
+			if((get_pdptV(pml4, pdpt)&0x1) == 0x0){
+				uint64_t * M = KPALLOC();
+				memfill(M, 0x1000);
+				get_pml4VP(pml4)[pdpt] = (V2P(M))|0x1; //should allocate it with kernel shit
+				FLUSH_TLB();
+			}
 			for(int pde = 0; pde<512; pde++){
+				if((get_pdeV(pml4, pdpt, pde)&0x1) == 0x0){
+					uint64_t * M = KPALLOC(); //right here I believe we RUN OUT of pages, and it tries to allocate a new one with kpalloc3, which fails for some reason...
+					memfill(M, 0x1000);
+					get_pdptVP(pml4, pdpt)[pde] = (V2P(M))|0x1; //should allocate it with kernel shit
+					FLUSH_TLB();
+				}
 				for(int pt = 0; pt<512; pt++){
-					if((get_ptV(pml4, pdpt, pde, pt) & 0x1)==0){
+					if((get_ptV(pml4, pdpt, pde, pt) & 0x1)==0){ //some kind of error in ptV for a usermode
+										     //i THINK it's because it assumes that pml4 exists, when it doesn't !!!
 						//woo hoo ! we have found our virtual address !!	
 						get_pdeVP(pml4,pdpt,pde)[pt] = (0x1000*ad)|0x5|FLAGS;
 						FLUSH_TLB();
@@ -178,6 +207,7 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 					if((get_pdeV(pml4,pdpt,pde+1)&0x1) == 0){
 						// boo hoo ! next pde doesn't exist
 						uint64_t* M = KPALLOC();
+						memfill(M, 0x1000);
 						get_pdptVP(pml4, pdpt)[pde+1] = V2P(M)|0x27;
 						M[0]=(0x1000*ad)|0x5|FLAGS;
 						FLUSH_TLB();
@@ -192,7 +222,9 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 							//a greater pdpt than we can contradict
 							//hath unallocated our intents
 							uint64_t* M = KPALLOC();
+							memfill(M, 0x1000);
 							uint64_t* M2 = KPALLOC();
+							memfill(M2, 0x1000);
 							get_pml4VP(pml4)[pdpt+1]=V2P(M)|0x27;
 							M[0]=V2P(M2)|0x27;
 							M2[0]=(0x1000*ad)|0x5|FLAGS;
@@ -205,8 +237,11 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 						if(pml4<0){
 							if((get_pml4V(pml4+1)&0x1) == 0){
 								uint64_t* M = KPALLOC();
+								memfill(M, 0x1000);
 								uint64_t* M2 = KPALLOC();
+								memfill(M2, 0x1000);
 								uint64_t* M3 = KPALLOC();
+								memfill(M3, 0x1000);
 								((uint64_t*)(MBASE+0x10000))[pml4+1]=V2P(M)|0x27;
 								M[0]=V2P(M2)|0x27;
 								M2[0]=V2P(M3)|0x27;
@@ -217,7 +252,7 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 								continue;
 							}
 						}else {
-							FAULT(); //no free space in the page tables
+							ERROR(ERR_PAGE_NOFREESPACE, 0x0); //no free space in the page tables
 							return (void*)0x0;
 						}
 					}
@@ -225,7 +260,7 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 			}
 		}
 	}
-	FAULT();
+	ERROR(ERR_PAGE_ALLOC_SHOULDNOTEXIST,0x0);
 	return (void*)0x0;
 }
 void * KP_ALLOC3(){
@@ -248,6 +283,7 @@ void * KP_ALLOC3(){
 					if((get_pdeV(pml4,pdpt,pde+1)&0x1) == 0){
 						// boo hoo ! next pde doesn't exist
 						uint64_t* M = KPALLOC();
+						memfill(M, 0x1000);
 						get_pdptVP(pml4, pdpt)[pde+1] = V2P(M)|0x23;
 						M[0]=(0x1000*ad)|0x1;
 						PA_CALLING=0x0;
@@ -263,7 +299,9 @@ void * KP_ALLOC3(){
 							//a greater pdpt than we can contradict
 							//hath unallocated our intents
 							uint64_t* M = KPALLOC();
+							memfill(M, 0x1000);
 							uint64_t* M2 = KPALLOC();
+							memfill(M2, 0x1000);
 							get_pml4VP(pml4)[pdpt+1]=V2P(M)|0x23;
 							M[0]=V2P(M2)|0x23;
 							M2[0]=(0x1000*ad)|0x1;
@@ -277,8 +315,11 @@ void * KP_ALLOC3(){
 						if(pml4<511){
 							if((get_pml4V(pml4+1)&0x1) == 0){
 								uint64_t* M = KPALLOC();
+								memfill(M, 0x1000);
 								uint64_t* M2 = KPALLOC();
+								memfill(M2, 0x1000);
 								uint64_t* M3 = KPALLOC();
+								memfill(M3, 0x1000);
 								((uint64_t*)(MBASE+0x10000))[pml4+1]=V2P(M)|0x23;
 								M[0]=V2P(M2)|0x23;
 								M2[0]=V2P(M3)|0x23;
@@ -290,7 +331,7 @@ void * KP_ALLOC3(){
 								continue;
 							}
 						}else {
-							FAULT(); //no free space in the page tables
+							ERROR(ERR_PAGE_NOFREESPACE,0x0); //no free space in the page tables
 							return (void*)0x0;
 						}
 					}
@@ -298,21 +339,22 @@ void * KP_ALLOC3(){
 			}
 		}
 	}
-	FAULT();
+	ERROR(ERR_PAGE_ALLOC_SHOULDNOTEXIST,0x0);
 	return (void*)0x0;
 }
 
 void P_FREE(void * v_add){
-	uint64_t pt = (((uint64_t)v_add)&0x1FF000)/0x1000;
-	uint64_t pde = (((uint64_t)v_add)&(0x200*0x1ff000))/(0x1000*0x200);
-	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200);
-	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))/(0x1000*0x200*0x200*(uint64_t)0x200);
-	PL_SV(V2P(v_add)/0x1000, 0x0);
+	uint64_t pt = (((uint64_t)v_add)&0x1FF000)>>12;
+	uint64_t pde = (((uint64_t)v_add)&(0x200*0x1ff000))>>(12+9);
+	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
+	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))>>(12+9*3);
+	PL_SV(V2P(v_add)>>12, 0x0);
+	memfill(v_add, 0x1000); //initialise the memory again
 	get_pdeVP(pml4,pdpt,pde)[pt] = 0x0;
-	if(pt == 0){
-		get_pdptVP(pml4,pdpt)[pde] = 0x0;
+	/*if(pt == 0){ //this is stupid. why did i do this.
+		get_pdptVP(pml4,pdpt)[pde] = 0x0; 
 		
-	}
+	}*/
 
 	FLUSH_TLB();
 }
