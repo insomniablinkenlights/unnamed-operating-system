@@ -5,9 +5,12 @@
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
 void ASMS_UM(void * n);
-void loadRSP0(){
-	*((uint64_t*)((char*)tss64+0x04)) = (uint64_t)(current_task_TCB->rsp); //not a typo, we don't want to load rsp0 into rsp0. Fuck x86.
-	LTR(40);
+uint64_t get_rspplus1(uint64_t k);
+void loadRSP0(uint64_t rsp){
+	char * tomodify = (char*)(&tss64)+0x04+CBASE;
+	*(((uint64_t*)tomodify)) = rsp; //not a typo, we don't want to load rsp0 into rsp0. Fuck x86.
+	//LTR(0x28);
+	//TODO: refresh TSS
 }
 void switchToUserModeProc(void* UP){
 	//ASSUMPTIONS
@@ -20,7 +23,7 @@ void switchToUserModeProc(void* UP){
 	//after this we need to initialise fds, initialise memory, initialise rsp0, intitialise registers, sysexit	
 	CloseAllFds(); //TODO: taskwise FD switching !!!
 	//let's actually initialise the memory in P_FREE instead
-	loadRSP0();
+	loadRSP0(get_rspplus1(040)); //huh.
 	ASMS_UM(UP);
 	//TODO: page faults :3
 	//by which I mean that we need to dynamically allocate user memory as it's needed
@@ -28,8 +31,9 @@ void switchToUserModeProc(void* UP){
 }
 void run_EXE(char * name){
 	//TODO: tasks need to switch between virtual address spaces
-	void * initialM = UPALLOC(0x0);
+	void * initialM = UPALLOC(0x2);
 	uint64_t id = OPEN(name, 0x0); 
+	BREAK(id);
 	READ(id, initialM, 0x200); //TODO: actually read the ENTIRE thing
 	CLOSE(id);
 	switchToUserModeProc(initialM);

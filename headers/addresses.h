@@ -14,13 +14,14 @@ void P_FREE(void * v_add);
 void STI();
 void BREAK(uint64_t data);
 void HLT();
+void PIC_sendEOI(uint8_t irq);
 uint32_t DIV64_32(uint64_t dd, uint32_t ds);
 uint32_t MOD64_32(uint64_t dd, uint32_t ds);
 void outb(uint16_t port, uint8_t data);
 uint8_t inb(uint16_t port);
 void memcpy(void * dest, void * src, uint64_t count);
 void memfill(void * dest, uint64_t count);
-void wait_for_irq(uint8_t irq, uint64_t timeout, void * timeout_function);
+void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void));
 void nano_sleep(uint64_t t);
 void ERROR(uint64_t code, uint64_t type);
 enum ERROR_CODES{
@@ -38,7 +39,7 @@ enum ERROR_CODES{
 	ERR_READ_SIZE_TEMP = 0xb,
 	ERR_FILE_DIRSTREAM = 0xc,
 	ERR_IN_DIR_DNE = 0xd,
-	ERR_IN_FILE_DNE = 0xe,
+	ERR_IN_FILE_DNE = 0xe, //it's entirely my fault that this lines up with PF
 	ERR_FD_TOOHIGH = 0xf,
 	ERR_FD_DNE = 0x10,
 	ERR_TT_NT = 0x11,
@@ -63,6 +64,20 @@ enum ERROR_CODES{
 	ERR_READ_SIZE=0x24,
 	ERR_WRITE_SIZE=0x25,
 	ERR_NOT_UM=0x26,
+	ERR_FILE_OPEN_SLASHCOUNT=0x27,
+	ERR_FILE_OPEN_WHY=0x28,
+	ERR_MALLOC_SIZE0=0x29,
+	ERR_MALLOC_SIZEMAX=0x2a,
+	ERR_VERIFY_USER_FAIL=0x2b,
+	ERR_8042_SELF_TEST=0x2c,
+	ERR_PS2_NO_CHANNELS=0x2d,
+	ERR_CTTCBN = 0x2e,
+	ERR_PS2_DATA_TIMEOUT=0x2f,
+	ERR_PS2_READ_TIMEOUT=0x30,
+	ERR_PS2_CMD_TIMEOUT=0x31,
+	ERR_TFNTTNNZ = 0x32,
+	ERR_SPLIT_FAIL = 0x33,
+	ERR_OPEN_TWO=0x34,
 };
 #define NULL  ((void*)0x0)
 

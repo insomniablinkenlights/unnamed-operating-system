@@ -56,6 +56,21 @@ mov %cr3, %rax
 mov %rax, %cr3
 pop %rax
 ret
+.global FLUSH_TLB2
+FLUSH_TLB2:
+push %rax
+push %rbx
+movabsq $(current_task_TCB), %rax
+movq (%rax), %rax
+movq 60(%rax), %rax
+movabsq $0x8000020000, %rbx
+movq 8(%rbx), %rbx
+mov %rbx, 8(%rax)
+mov %cr3, %rax
+mov %rax, %cr3
+pop %rbx
+pop %rax
+ret
 FAULT:
 xchgw %bx, %bx
 nop
@@ -113,15 +128,27 @@ ST2:
 //i don't know why this is important...
 ST3:
 //load next state
+//rdi = *next
 mov %rdi, %rsi
 movb $0, 24(%rsi)
+//rax = **tcb
+//replace current task tcb
+mov (%rax), %rbx
+//rbx = *tcb
 mov %rsi, (%rax)
 mov (%rsi), %rsp
-mov 60(%rsi), %rax
-mov %cr3, %rcx
+//get cr3
+mov 60(%rsi), %rcx
+mov 60(%rbx), %rax
 cmp %rax, %rcx
 je STDONE
-mov %rax, %cr3
+//they have diff' cr3s
+//swap user mem in...
+movabsq $(0x8000020000), %rbx
+movq (%rbx), %rsi
+movq %rsi, (%rax)
+movq (%rcx), %rsi
+movq %rsi, (%rbx)
 STDONE:
 //TODO: do some TSS stuff
 //TODO: do some cr3 stuff
@@ -191,6 +218,7 @@ pop %rdi
 ret
 .global LTR
 LTR:
+xchgw %bx, %bx
 mov %rdi, %rax
 ltr %ax
 ret
@@ -205,16 +233,57 @@ xor %rdi, %rdi
 .global ASMS_UM
 ASMS_UM:
 
-mov $(0x18 |3), %ax
+mov $(0x20 |3), %ax
 mov %ax, %ds
 mov %ax, %es
 mov %ax, %fs
 mov %ax, %gs
 mov %rsp, %rax
-push $(0x18|3)
+push $(0x20|3)
 push $0x10000
 pushf
-push $0x23
+push $(0x18|3)
 push %rdi
 CLEARALLREGS
+iretq
+.global get_rspplus1
+get_rspplus1:
+mov %rsp, %rax
+ret
+.global Int0x80Handler
+Int0x80Handler:
+//arguments are passed in standard sysv style
+//already on stack: ss, sp, flags, cs, ip
+//need to push ax, gs, fs, es, ds, -ENOSYS, bp, di, si, dx, cx, bx
+push %rcx
+push %rdx
+push %r8
+push %r9
+push %r10
+push %r11
+push %rsi
+push %rdi
+call INT0x80C
+pop %rdi
+pop %rsi
+pop %r11
+pop %r10
+pop %r9
+pop %r8
+pop %rdx
+pop %rcx
+iretq
+.global PS2_HANDLER
+PS2_HANDLER:
+UNCLOBBER
+mov $1, %rdi
+call unblockirq
+RECLOBBER
+iretq
+.global PS2_HANDLER12
+PS2_HANDLER12:
+UNCLOBBER
+mov $12, %rdi
+call unblockirq
+RECLOBBER
 iretq

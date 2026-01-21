@@ -15,6 +15,8 @@ typedef struct __attribute__((packed)) thread_control_block {
 	void * file_descriptors;// +52
 	void * cr3;//+60
 	void * vaddsp;//+64
+	uint64_t kernelFdLen; //+68
 } thread_control_block;
 extern thread_control_block * current_task_TCB;
+thread_control_block * create_kernel_task(void startingRIP(void));
 #endif

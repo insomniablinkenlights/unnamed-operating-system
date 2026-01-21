@@ -27,7 +27,7 @@ call constructIDT
 pop %rax
 cli
 movabsq $idtr_64, %r9
-movq $(0x27*16), (%r9)
+movq $(0x81*16), (%r9)
 movq %rax, 2(%r9)
 lidt (%r9)
 //set PIC to signal int 0x0-0x7 for 0x20-0x27 as to not map to CPU bs
@@ -49,7 +49,7 @@ sti
 //mov %rax, %rdx
 //call floppy_write
 call memory_operation_test
-call floppy_driver_test
+//call floppy_driver_test
 //start init task!
 call start_init_task
 //we PF here because L is in a kernel segment -- security !!!

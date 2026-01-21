@@ -100,6 +100,17 @@ void initialize_multitasking(){
 	((thread_control_block*)(MBASE+0x1d000))->state=STATE_RUNNING;
 	current_task_TCB=(thread_control_block*)(MBASE+0x1d000);
 	current_task_TCB->time_used=0x0;
+	current_task_TCB->priority=0x0;
+	current_task_TCB->ttn = 0x0;
+	current_task_TCB->time_used=0x0;
+	current_task_TCB->irq_waiting_for = 0x0;
+	current_task_TCB->PL = 0x0;
+	current_task_TCB->timeout_function = NULL;
+	current_task_TCB->file_descriptors = NULL;
+	current_task_TCB->cr3 = KPALLOC();
+	memfill(current_task_TCB->cr3, 0x1000);
+	current_task_TCB->vaddsp = NULL;
+	current_task_TCB->kernelFdLen = 0x0;
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
@@ -119,16 +130,23 @@ void switch_to_task_wrapper(thread_control_block * task){
 		time_slice_remaining = 50000000;
 	}
 	update_time_used();
+	//switch fd?
 	switch_to_task(task);
 }
-thread_control_block * create_kernel_task(void * startingRIP){
+thread_control_block * create_kernel_task(void startingRIP(void)){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
 	M->rsp0=M2+0xFFF;
 	M->rsp=M2+0xFFF-4*8;
 	M->state = STATE_READY;
 	M->next=0x0;
-	((void**)(M2+0xFFF))[0]= startingRIP;
+	M->priority = 0x0; M->ttn = 0x0; M->time_used = 0x0; M->PL =0x0; M->timeout_function = NULL; M->irq_waiting_for=0x0; M->file_descriptors=NULL; 
+	M->cr3=KPALLOC(); //each task has its own cr3 where the top half is the same as in our mbase and the bottom half is usermode
+	memfill(M->cr3, 0x1000);
+				//so each time we update kernel memory we need to update both actual cr3 and 0x10000? 
+				//nah, when we switch out we'll just change the 10k
+	M->vaddsp=NULL;M->kernelFdLen=0x0;
+	((void **)(M2+0xFFF))[0] = startingRIP;
 	if(FIRST_THREAD != NULL){
 		LAST_THREAD->next = M;
 		LAST_THREAD= M;
@@ -247,11 +265,15 @@ void sleep(uint64_t t){
 	nano_sleep(t);
 }
 thread_control_block * irqwaiting;
-void wait_for_irq(uint8_t irq, uint64_t timeout, void * timeout_function){
+void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	lock_stuff();
 	current_task_TCB->irq_waiting_for = irq;
 	current_task_TCB->next=irqwaiting;
-	current_task_TCB->ttn = TIME + timeout;
+	if(timeout == 0x0){
+		current_task_TCB->ttn=0x0;
+	}else{
+		current_task_TCB->ttn = TIME + timeout;
+	}
 	current_task_TCB->timeout_function = timeout_function;
 	irqwaiting=current_task_TCB;
 	unlock_stuff();
@@ -304,7 +326,10 @@ void PIT_IRQ_handler(){
 	while(next_task != NULL){
 		this_task = next_task;
 		next_task = this_task ->next;
-		if(this_task -> ttn <= TIME){
+		if(this_task -> ttn <= TIME && this_task->ttn != 0x0){
+			if(this_task -> timeout_function == NULL){
+				ERROR(ERR_TFNTTNNZ, (uint64_t)this_task);
+			}
 			*((void**)(this_task ->rsp+48)) = this_task -> timeout_function; //TODO: not sure if this works!
 			unblock_task(this_task);
 		}else{

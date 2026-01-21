@@ -42,6 +42,7 @@ CIDTE IDT_VE, 0x14
 CIDTER IDT_CP, 0x15
 //timer interrupt implemented in asmbridge.S
 //floppy interrupt implemented later in file
+//both ps/2 interrupts implemented in asmbridge.S
 
 .global IDT_PF
 IDT_PF:
@@ -75,4 +76,9 @@ pop %rsi
 pop %rdx
 pop %rcx
 pop %rax
+iretq
+.global SPIRQ
+SPIRQ:
+xchgw %bx, %bx
+mov $0x27, %rbx
 iretq

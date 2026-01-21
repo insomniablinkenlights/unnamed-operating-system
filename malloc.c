@@ -14,12 +14,12 @@ void initMalloc(){
 }
 void * malloc(uint64_t size){
 	uint64_t * memoryaddress;
-	if(size==0) FAULT();
+	if(size==0) ERROR(ERR_MALLOC_SIZE0, 0x0);
 	if(MOD64_32(size,64)){
 		size+=64-MOD64_32(size,64);
 	}
 	if(size>4096-64){
-		FAULT(); //TODO: malloc would need to rearrange the pages
+		ERROR(ERR_MALLOC_SIZEMAX, 0x0); //TODO: malloc would need to rearrange the pages
 	}
 	size = DIV64_32(size, 64); //size is in 8quads now :3
 	size += 1; //add 8 quads
@@ -70,16 +70,17 @@ void * malloc(uint64_t size){
 		mcp[511] = (uint64_t)KPALLOC();
 		memfill((void*)(mcp[511]), 0x1000);
 		NA = (uint64_t*) (mcp[511]);
-		*(NA) = 0xFFFFFFFFFFFFFFFF ^ sizebitmask;
-		*(NA+1) = (uint64_t)KPALLOC(); //TODO: MEMORY LEAK!!!
-		memfill((void*)(*(NA+1)), 0x1000);
-		memoryaddress = (uint64_t*) (*(NA+1) +8); //i hope...
-		memoryaddress[-1] = (uint64_t)(NA+1);
-		memoryaddress[-2] = size -1;
-		memoryaddress[-3] = size;
-		return (void*)memoryaddress;
+	} //wow thanks artavazd for pointing out my dead code
+	*(NA) = 0xFFFFFFFFFFFFFFFF ^ sizebitmask;
+	*(NA+1) = (uint64_t)KPALLOC(); //TODO: MEMORY LEAK!!!
+	memfill((void*)(*(NA+1)), 0x1000);
+	memoryaddress = (uint64_t*) (*(NA+1) )+8; //i hope...
+	memoryaddress[-1] = (uint64_t)(NA+1);
+	memoryaddress[-2] = size -1;
+	memoryaddress[-3] = size;
+	return (void*)memoryaddress;
 
-	}else{ //we have an unallocated space -- allocate it and return
+	/*}else{ //we have an unallocated space -- allocate it and return
 		*(NA) = 0xFFFFFFFFFFFFFFFF ^ sizebitmask; //initialise our bitmap so that the first part is our memory to return
 		*(NA+1) = (uint64_t)KPALLOC(); //TODO: MEMORY LEAK!!!
 		memfill((void*)(*(NA+1)), 0x1000);
@@ -90,7 +91,7 @@ void * malloc(uint64_t size){
 		memoryaddress[-3] = size;
 		return (void*)memoryaddress;
 
-	}
+	}*/
 }
 void free(void * ptr){
 	//get the pointer to the bitmask:
@@ -109,9 +110,15 @@ void free(void * ptr){
 		ERROR(ERR_DOUBLE_FREE, (uint64_t)ptr);
 	}
 	uint64_t resizebitmask = ((1<<size)-1);
-	uint64_t resizebitmaskjshift = resizebitmask <<(j-size+1); //imagine size=4, j=5, 0b111100
-	if(*bitmaskptr & resizebitmaskjshift){
-		ERROR(ERR_FREE_BADMETADATA, (uint64_t)bitmaskptr);
+	uint64_t resizebitmaskjshift = resizebitmask <<(j-size+1); //imagine size=3, j=5, 0b111000
+	if((*bitmaskptr & resizebitmaskjshift)){ //malloc is returning a region within the free?
+		BREAK(j);
+		BREAK(size);
+		BREAK(resizebitmaskjshift);
+		ERROR(ERR_FREE_BADMETADATA, *bitmaskptr & resizebitmaskjshift);
 	}
 	*bitmaskptr ^= resizebitmaskjshift;
+	((uint64_t*)ptr)[-3] = 0x0; //mark for doublefree
+	((uint64_t*)ptr)[-2] = 0x0;
+	((uint64_t*)ptr)[-1] = 0x0;
 }

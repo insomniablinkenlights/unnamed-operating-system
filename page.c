@@ -2,7 +2,7 @@
 #include "headers/addresses.h"
 #define PTV_MEMORYOVERHEAD 0
 void FLUSH_TLB();
-
+void FLUSH_TLB2();
 
 uint64_t * manualptVlookup(uint64_t AD){ //TODO: measure cpu usage
 	//USE: 0x1c000
@@ -177,21 +177,21 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 		if((get_pml4V(pml4)&0x1) == 0x0){ //if our pml4 doesn't exist, we create it
 			uint64_t * M = KPALLOC();
 			memfill(M, 0x1000);
-			((uint64_t*)(MBASE+0x10000))[pml4] = (V2P(M))|0x1; //should allocate it with kernel shit
+			((uint64_t*)(MBASE+0x10000))[pml4] = (V2P(M))|0x7; //should allocate it with kernel shit
 			FLUSH_TLB();
 		}
 		for(int pdpt = 0; pdpt<512; pdpt++){
 			if((get_pdptV(pml4, pdpt)&0x1) == 0x0){
 				uint64_t * M = KPALLOC();
 				memfill(M, 0x1000);
-				get_pml4VP(pml4)[pdpt] = (V2P(M))|0x1; //should allocate it with kernel shit
+				get_pml4VP(pml4)[pdpt] = (V2P(M))|0x7; //should allocate it with kernel shit
 				FLUSH_TLB();
 			}
 			for(int pde = 0; pde<512; pde++){
 				if((get_pdeV(pml4, pdpt, pde)&0x1) == 0x0){
 					uint64_t * M = KPALLOC(); //right here I believe we RUN OUT of pages, and it tries to allocate a new one with kpalloc3, which fails for some reason...
 					memfill(M, 0x1000);
-					get_pdptVP(pml4, pdpt)[pde] = (V2P(M))|0x1; //should allocate it with kernel shit
+					get_pdptVP(pml4, pdpt)[pde] = (V2P(M))|0x7; //should allocate it with kernel shit
 					FLUSH_TLB();
 				}
 				for(int pt = 0; pt<512; pt++){
@@ -208,7 +208,7 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 						// boo hoo ! next pde doesn't exist
 						uint64_t* M = KPALLOC();
 						memfill(M, 0x1000);
-						get_pdptVP(pml4, pdpt)[pde+1] = V2P(M)|0x27;
+						get_pdptVP(pml4, pdpt)[pde+1] = V2P(M)|0x27|0x7;
 						M[0]=(0x1000*ad)|0x5|FLAGS;
 						FLUSH_TLB();
 						return (void*)construct_virtual_address(pml4,pdpt,pde+1,0x0);
@@ -357,4 +357,11 @@ void P_FREE(void * v_add){
 	}*/
 
 	FLUSH_TLB();
+}
+void * VERIFY_USER(void * rdx){
+	if((uint64_t)(rdx) > CBASE){
+		ERROR(ERR_VERIFY_USER_FAIL, (uint64_t)rdx);
+	       	return NULL;
+	}
+	return rdx; //_might_ cause PF, but never GP
 }
