@@ -1,5 +1,24 @@
 #include "headers/stdint.h"
 #include "headers/addresses.h"
+#include "headers/proc.h"
+/*
+ *	IMPORTANT
+ *	when switching between two tasks, the tasks will ALWAYS be in kernel mode, always being interrupt handlers or whatever
+ *	usermode tasks are handled by a kernelmode process which launches them, that process will have the interrupts
+ *	each kernel process thus needs to have a stack of its own and a RSP0 for the TSS.
+ * */
+/*
+ * TSS
+ * tss contains rsp0 and ss0
+ * when we switch to kernel mode, rsp0 is loaded from tss, data is pushed, etc
+ * this happens AGAIN if a second interrupt happens while in kernel mode
+ * a thread's time slice may end during a syscall, calling scheduler in the middle of the syscall, switching to user mode and calling the same syscall again from a different process
+ * so interrupts will cli, change rsp to process-specific rsp, move shit off rsp0 to a new rsp, sti, goto that rsp, do shit, return
+ *
+ * actually that's false
+ * we can simply load in our current rsp to the tss's rsp0 when we switch processes or switch to usermode
+ * because tss's rsp0 is only loaded on priv change :3
+ * */
 long long int IRQ_disable_counter = 0;
 uint64_t task_switches_postponed_flag=0;
 long long int postpone_task_switches_counter=0;
@@ -25,22 +44,8 @@ void lock_stuff(){
 #endif
 }
 void schedule();
-
-typedef struct thread_control_block{
-	void * rsp;
-	void * rsp0;
-	struct thread_control_block * next;
-	uint8_t state;
-	uint8_t priority;
-	uint64_t ttn;
-	uint64_t time_used;
-	uint8_t irq_waiting_for;
-	uint8_t PL;
-	void * timeout_function;
-	void * file_descriptors;
-} thread_control_block;
+thread_control_block * current_task_TCB;
 uint64_t last_count;
-thread_control_block* current_task_TCB;
 thread_control_block * FIRST_THREAD;
 thread_control_block * LAST_THREAD;
 enum task_states {
@@ -95,6 +100,17 @@ void initialize_multitasking(){
 	((thread_control_block*)(MBASE+0x1d000))->state=STATE_RUNNING;
 	current_task_TCB=(thread_control_block*)(MBASE+0x1d000);
 	current_task_TCB->time_used=0x0;
+	current_task_TCB->priority=0x0;
+	current_task_TCB->ttn = 0x0;
+	current_task_TCB->time_used=0x0;
+	current_task_TCB->irq_waiting_for = 0x0;
+	current_task_TCB->PL = 0x0;
+	current_task_TCB->timeout_function = NULL;
+	current_task_TCB->file_descriptors = NULL;
+	current_task_TCB->cr3 = KPALLOC();
+	memfill(current_task_TCB->cr3, 0x1000);
+	current_task_TCB->vaddsp = NULL;
+	current_task_TCB->kernelFdLen = 0x0;
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
@@ -114,16 +130,23 @@ void switch_to_task_wrapper(thread_control_block * task){
 		time_slice_remaining = 50000000;
 	}
 	update_time_used();
+	//switch fd?
 	switch_to_task(task);
 }
-thread_control_block * create_kernel_task(void * startingRIP){
+thread_control_block * create_kernel_task(void startingRIP(void)){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
 	M->rsp0=M2+0xFFF;
 	M->rsp=M2+0xFFF-4*8;
 	M->state = STATE_READY;
 	M->next=0x0;
-	((void**)(M2+0xFFF))[0]= startingRIP;
+	M->priority = 0x0; M->ttn = 0x0; M->time_used = 0x0; M->PL =0x0; M->timeout_function = NULL; M->irq_waiting_for=0x0; M->file_descriptors=NULL; 
+	M->cr3=KPALLOC(); //each task has its own cr3 where the top half is the same as in our mbase and the bottom half is usermode
+	memfill(M->cr3, 0x1000);
+				//so each time we update kernel memory we need to update both actual cr3 and 0x10000? 
+				//nah, when we switch out we'll just change the 10k
+	M->vaddsp=NULL;M->kernelFdLen=0x0;
+	((void **)(M2+0xFFF))[0] = startingRIP;
 	if(FIRST_THREAD != NULL){
 		LAST_THREAD->next = M;
 		LAST_THREAD= M;
@@ -242,11 +265,15 @@ void sleep(uint64_t t){
 	nano_sleep(t);
 }
 thread_control_block * irqwaiting;
-void wait_for_irq(uint8_t irq, uint64_t timeout, void * timeout_function){
+void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	lock_stuff();
 	current_task_TCB->irq_waiting_for = irq;
 	current_task_TCB->next=irqwaiting;
-	current_task_TCB->ttn = TIME + timeout;
+	if(timeout == 0x0){
+		current_task_TCB->ttn=0x0;
+	}else{
+		current_task_TCB->ttn = TIME + timeout;
+	}
 	current_task_TCB->timeout_function = timeout_function;
 	irqwaiting=current_task_TCB;
 	unlock_stuff();
@@ -284,7 +311,10 @@ void PIT_IRQ_handler(){
 		if(this_task == next_task){
 			ERROR(ERR_TT_NT, 0x0);
 		}
-		if(this_task -> ttn <= TIME){
+		if( this_task -> state == STATE_WAITING_FOR_IRQ){
+			ERROR(ERR_PIT_WFI_MISP, (uint64_t)this_task);
+		}
+		if( this_task -> ttn <= TIME){
 			unblock_task(this_task);
 		}else{
 			this_task->next = sleeping_task_list;
@@ -296,7 +326,10 @@ void PIT_IRQ_handler(){
 	while(next_task != NULL){
 		this_task = next_task;
 		next_task = this_task ->next;
-		if(this_task -> ttn <= TIME){
+		if(this_task -> ttn <= TIME && this_task->ttn != 0x0){
+			if(this_task -> timeout_function == NULL){
+				ERROR(ERR_TFNTTNNZ, (uint64_t)this_task);
+			}
 			*((void**)(this_task ->rsp+48)) = this_task -> timeout_function; //TODO: not sure if this works!
 			unblock_task(this_task);
 		}else{
@@ -313,11 +346,4 @@ void PIT_IRQ_handler(){
 	}
 	unlock_stuff(); //after unblocking task it is postponed until HERE, we then call schedule where it errors out
 }
-/*
- * TSS
- * tss contains esp0 and ss0
- * when we switch to kernel mode, esp0 is loaded from tss, data is pushed, etc
- * this happens AGAIN if a second interrupt happens while in kernel mode
- * a thread's time slice may end during a syscall, calling scheduler in the middle of the syscall, switching to user mode and calling the same syscall again from a different process
- * so interrupts will cli, change rsp to process-specific rsp, move shit off esp0 to a new rsp, sti, goto that rsp, do shit, return
- * */
+
