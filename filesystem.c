@@ -212,9 +212,7 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
-	if(pairOut == NULL){ //We're trying to write to a closed stdout
-		return 0; //fail silently
-	}else if(pairOut == TermSP){
+	if(pairOut == TermSP){
 		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific
 		write_to_screen(buffer, len);
 	//	while(len > 0x0){ //the ONLY time when we use the pair's output as its input
@@ -325,6 +323,7 @@ void OpenStdIn(){
 	if(!stdinSetup){
 		stdinSetup = 0x1;
 		TermSP = malloc(sizeof(stdIO));
+		memfill(TermSp, sizeof(stdIO));
 		TermSP->bufferOut = malloc(sizeof(stdFIFOBUF));
 		TermSP->bufferOutEnd = TermSP->bufferOut;
 		TermSP->bufferOut->datac = 0; //TODO: this might have a fencepost
