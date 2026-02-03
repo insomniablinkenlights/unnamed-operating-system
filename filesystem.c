@@ -323,7 +323,7 @@ void OpenStdIn(){
 	if(!stdinSetup){
 		stdinSetup = 0x1;
 		TermSP = malloc(sizeof(stdIO));
-		memfill(TermSp, sizeof(stdIO));
+		memfill(TermSP, sizeof(stdIO));
 		TermSP->bufferOut = malloc(sizeof(stdFIFOBUF));
 		TermSP->bufferOutEnd = TermSP->bufferOut;
 		TermSP->bufferOut->datac = 0; //TODO: this might have a fencepost
