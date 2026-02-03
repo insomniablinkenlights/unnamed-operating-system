@@ -7,11 +7,11 @@ void write_to_screen(char * k, uint64_t len){
 		if(terminal_x>80){
 			terminal_x=0; terminal_y++;
 		}
-		while(terminal_y>25){
+		while(terminal_y>20){
 			memcpy((char*)(CBASE+0xb8000), (char*)(CBASE+0xb8000)+160, 160*24);	
 			terminal_y--;
 		}
-		if(terminal_y<25){
+		if(terminal_y<20){
 			if(k[i] == '\n'){
 				while(terminal_x<80){
 					((char*)(CBASE+0xb8000))[terminal_y*160+terminal_x*2] = ' ';

@@ -6,7 +6,11 @@ void FLUSH_TLB2();
 
 uint64_t * manualptVlookup(uint64_t AD){ //TODO: measure cpu usage
 	//USE: 0x1c000
-	*((uint64_t*)(MBASE+0x13160)) = AD|0x3;	//this needs to be changed whenever mbase is
+	uint64_t offset = (((MBASE-CBASE)>>12)+0x1c)<<3;
+	if(offset>=0x1000){
+		ERROR(ERR_MBASE_TOOHIGH, offset);
+	}
+	*((uint64_t*)(MBASE+0x13000+offset)) = AD|0x3;	
 	FLUSH_TLB();
 	return (uint64_t*)(MBASE+0x1c000);
 }
@@ -104,29 +108,31 @@ void * UPALLOC(uint8_t FLAGS){ // THIS FUNCTION BREAKS IF CALLED TWICE
 	return (void*)k; //breaks*/
 }
 void * PL_MAP_START = (void*)(MBASE+0x15000);
-void * LL_NV(uint64_t index, void * PLM){
-	if(index > 510){
-		if(((uint64_t*)PLM)[511] == 0x0){
-			((uint64_t*)PLM)[511] = (uint64_t)KPALLOC();
-			memfill((uint64_t*)(((uint64_t*)(PLM))[511]), 0x1000);
+void * LL_NV(uint64_t index, void * PLM){ //we want to return the index'th quad in a linked list PLM
+	if(index > 510){ //it's not in this list
+		if(((uint64_t*)PLM)[511] == 0x0){ //we have no next list
+			((uint64_t*)PLM)[511] = (uint64_t)KPALLOC(); //make a new one
+			memfill((uint64_t*)(((uint64_t*)(PLM))[511]), 0x1000); //initialise it
 		}
-		return LL_NV(index-511, (void*)(((uint64_t*)PLM)[511]));
+		return LL_NV(index-511, (void*)(((uint64_t*)PLM)[511])); //say our index is 511, we get the first element in the next list
 	}
-	return (void*)((char*)(PLM)+sizeof(uint64_t)*index);
+	// it is in this list
+	return (void*)((char*)(PLM)+sizeof(uint64_t)*index); //a pointer to the 0th, plus 8 times the index
 }
-void PL_SV(uint64_t index, uint8_t val){
+void PL_SV(uint64_t index, uint8_t val){ //lowkey this might be the problem 3:
 	if(val == 0x1) {
-		*(uint64_t*)LL_NV(index>>6, PL_MAP_START) |= 1 << (index&63); 
+		*(uint64_t*)LL_NV(index>>6, PL_MAP_START) |= 1 << (index&63); //index >> 6 == index / 64
+									      //1<<63 should be below the limit
 	}else{
 		*(uint64_t*)LL_NV(index>>6, PL_MAP_START) &= ~(1 << (index&63)); 
 	}
 }
-uint64_t PL_FN(){
+uint64_t PL_FN(){ //this doesn't work and i have no idea why!
 	uint64_t i = 0;
 	uint64_t * PT = PL_MAP_START;
 	while(1){
 		for(int j = 0; j<511; j++){
-			if(PT[j] != 0xFFFFFFFFFFFFFFFF){
+			if(PT[j] != 0xFFFFFFFFFFFFFFFF){ //there's an unset bit somewhere in here
 			//	while(!((PT[j]>>((i++)%64))&0x1)); return i;
 				int m = 0;
 				while((PT[j]&(1<<m)) != 0x0){
@@ -138,25 +144,29 @@ uint64_t PL_FN(){
 				return i+m;
 				//return i + __builtin_ctzll(~PT[j]);
 			}
-			i+=64;
+			i+=64; //increase the bit index by 64 so we get the next one
 		}
-		if(PT[511]==0x0){
-			PT[511]=(uint64_t)KPALLOC();
-			memfill((uint64_t*)(PT[511]), 0x1000);
+		//we didn't match any in this table, go to the next
+		if(PT[511]==0x0){ //if we have no next
+			PT[511]=(uint64_t)KPALLOC(); //make one
+			memfill((uint64_t*)(PT[511]), 0x1000); //and initialise it
 		}
-		PT=(uint64_t*)(PT[511]);
+		PT=(uint64_t*)(PT[511]); //and then move forward
 	}
 }
 void P_ALLOC3_SETUP(){
 	PA_CALLING=0x0;
+	memfill((uint64_t*)(MBASE+0x16000), 0x1000);
+	memfill((uint64_t*)(MBASE+0x17000), 0x1000);
+	memfill ((uint64_t*)(MBASE+0x15000), 0x1000); //intitialise PL
 	for(int i = 0; i<512; i++){
 		PL_SV(i, 1);
 	}
 	((uint64_t*)(MBASE+0x16000))[501]=MBASE+0x19000; // pde list plus pdpt list is two extra pages to start
 	((uint64_t*)(MBASE+0x16000))[502]=MBASE+0x1A000;
 	((uint64_t*)(MBASE+0x16000))[503]=MBASE+0x1E000;
-	((uint64_t*)(MBASE+0x17000))[502]=MBASE+0x1B000;
-
+	((uint64_t*)(MBASE+0x16000))[500]=MBASE+0x1F000;
+	//manualptVlookup() confirmed to work.
 	//fill up the rest of the list...
 	((uint64_t*)(MBASE+0x16000))[511]=(uint64_t)KPALLOC();
 	//remove bootstrap !!!
@@ -268,8 +278,26 @@ void * KP_ALLOC3(){
 	uint64_t ad = PL_FN(); //here is our PHYSICAL address
 	PL_SV(ad, 0x1);
 	for(int pml4 = 1; pml4<512; pml4++){
+		if((get_pml4V(pml4)&0x1) == 0x0){ //if our pml4 doesn't exist, we create it
+			uint64_t * M = KPALLOC();
+			memfill(M, 0x1000);
+			((uint64_t*)(MBASE+0x10000))[pml4] = (V2P(M))|0x1; //should allocate it with kernel shit
+			FLUSH_TLB();
+		}
 		for(int pdpt = 0; pdpt<512; pdpt++){
+			if((get_pdptV(pml4, pdpt)&0x1) == 0x0){
+				uint64_t * M = KPALLOC();
+				memfill(M, 0x1000);
+				get_pml4VP(pml4)[pdpt] = (V2P(M))|0x1; //should allocate it with kernel shit
+				FLUSH_TLB();
+			}
 			for(int pde = 0; pde<512; pde++){
+				if((get_pdeV(pml4, pdpt, pde)&0x1) == 0x0){
+					uint64_t * M = KPALLOC(); //right here I believe we RUN OUT of pages, and it tries to allocate a new one with kpalloc3, which fails for some reason...
+					memfill(M, 0x1000);
+					get_pdptVP(pml4, pdpt)[pde] = (V2P(M))|0x1; //should allocate it with kernel shit
+					FLUSH_TLB();
+				}
 				for(int pt = 0; pt<512; pt++){
 					if((get_ptV(pml4, pdpt, pde, pt) & 0x1)==0){
 						//woo hoo ! we have found our virtual address !!	
@@ -285,7 +313,9 @@ void * KP_ALLOC3(){
 						uint64_t* M = KPALLOC();
 						memfill(M, 0x1000);
 						get_pdptVP(pml4, pdpt)[pde+1] = V2P(M)|0x23;
-						M[0]=(0x1000*ad)|0x1;
+						//set it
+						M[0]=(0x1000*ad)|0x1; //address is one too high, see PL_FN
+						//set the first entry to be the address
 						PA_CALLING=0x0;
 						FLUSH_TLB();
 						return (void*)construct_virtual_address(pml4,pdpt,pde+1,0x0);

@@ -3,7 +3,7 @@
 #include "headers/chs.h"
 #include "headers/proc.h"
 uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
-	//TODO: drive numbers, len > 0x1000
+	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
 		ERROR(ERR_READ_DISKINV, disk);
 	}
@@ -106,7 +106,7 @@ void InitKernelFd(){
 	kernelFdLastClosed=0x0;
 	kernelFdLen=DIV64_32(0x1000,sizeof(stream));
 	if(root == NULL){
-		root = GrabInode(0x0);
+		root = GrabInode(0x0); //broken here! multitasking?
 	}
 	OpenStdIn();
 }
@@ -171,6 +171,11 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
 		//cleanup
 		free(arguments);	
 		return 0x0;
+	}else if(rw == 0x3){
+		inode * k = GrabInode(((uint64_t*)arguments)[0]);
+		uint64_t len = k->chunklen*0x200;
+		free(k);
+		return len;
 	}else {
 		ERROR(ERR_FILESTREAM_RW,rw);
 		return 0x0;
@@ -181,11 +186,18 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
  * one process will have an stdout bound to that of another process's stdin, or to an output source
  * same for stdin
  * */
+typedef struct __attribute__((packed)) stdFIFOBUF{
+	uint64_t data[32];
+	uint8_t datac; //with this we can access 256 bytes, so 8*32 quads
+	uint8_t block_read;
+	uint8_t block_write;
+	struct stdFIFOBUF* next;
+}stdFIFOBUF;
 typedef struct stdIO{
 	struct stdIO * pairIn; //pointer to the matching stdIO
 	struct stdIO * pairOut;
-	void * bufferOut; //if we write multiple bytes in
-	uint64_t bcount; //does not go above 0x1000
+	stdFIFOBUF * bufferOut; //if we write multiple bytes in
+	stdFIFOBUF * bufferOutEnd; //does not go above 0x1000
 	uint64_t type;	
 }stdIO;
 /*to write to this, grab the pair, check if type == terminal or whatever, check that sizeof buffer is less than bcount, if so write shit, otherwise block until we can*/
@@ -199,32 +211,60 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	//going to assume that any stdout is directly to the terminal for now; later on the arguments will have pipes and shit
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
+	int WP = 0;
 	if(pairOut == NULL){ //We're trying to write to a closed stdout
 		return 0; //fail silently
 	}else if(pairOut == TermSP){
-		while(len > 0x0){ //the ONLY time when we use the pair's output as its input
-			toWrite = ((0x1000-pairOut->bcount)<len)?(0x1000-pairOut->bcount):(len);
+		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific
+		write_to_screen(buffer, len);
+	//	while(len > 0x0){ //the ONLY time when we use the pair's output as its input
+		/*	toWrite = ((0x1000-pairOut->bcount)<len)?(0x1000-pairOut->bcount):(len);
 			memcpy((char*)(pairOut->bufferOut)+pairOut->bcount, buffer, toWrite);
 			len-=toWrite;
-			pairOut->bcount+=toWrite;
-			write_to_screen(pairOut->bufferOut,pairOut-> bcount); //TODO: write_to_screen needs to behave more like a unix terminal
-			pairOut->bcount=0;
-		}
+			pairOut->bcount+=toWrite;*/
+	//		write_to_screen(pairOut->bufferOut,pairOut-> bcount); //TODO: write_to_screen needs to behave more like a unix terminal
+		//	pairOut->bcount=0;
+	//	}
 	}else{
 		//we have an actual stream	
 		while(len > 0x0){
 			if(arguments->pairOut == NULL) return 0; //closed in the middle...
-			toWrite = ((0x1000-arguments->bcount)<len)?(0x1000-arguments->bcount):(len);
+			if(arguments->bufferOutEnd->datac != 0xFF){
+				if(arguments->bufferOutEnd->block_write){ //shitty mutex, breaks if we check block_read in the read function, it's 0, we move on to read some stuff, before we set block_write we yield to this function, which checks it, sees 0, turns on block_read, does some stuff, halfway in between move back to read function, which turns on block_write and so on.
+					continue;
+				}
+				arguments->bufferOutEnd->block_read = 1;
+				toWrite = MIN(255-arguments->bufferOutEnd->datac, len);
+				memcpy(arguments->bufferOutEnd->data+arguments->bufferOutEnd->datac, buffer+WP, toWrite);
+				arguments->bufferOutEnd->datac+=toWrite;
+				WP+=toWrite;
+				arguments->bufferOutEnd->block_read = 0;
+			}else{ //we need to make the next free bufferOut
+				if(arguments->bufferOutEnd->block_write){ //shitty mutex
+					continue;
+				}
+				arguments->bufferOutEnd->block_read = 1;
+				toWrite = MIN(255, len);
+				arguments->bufferOutEnd->next = malloc(sizeof(stdFIFOBUF));
+				arguments->bufferOutEnd->next->datac = toWrite;
+				arguments->bufferOutEnd->next->block_write = 0;
+				arguments->bufferOutEnd->next->block_read = 0;
+				memcpy(arguments->bufferOutEnd->next->data, buffer+WP, toWrite);
+				WP+=toWrite;
+				arguments->bufferOutEnd->block_read = 0;
+				arguments->bufferOutEnd = arguments->bufferOutEnd->next;
+			}
+		/*	toWrite = ((0x1000-arguments->bcount)<len)?(0x1000-arguments->bcount):(len);
 			if(toWrite == 0x0) continue; //TODO: block for IO
 			memcpy((char*)(arguments->bufferOut)+arguments->bcount, buffer, toWrite);
 			len-=toWrite;
-			arguments->bcount+=toWrite;
+			arguments->bcount+=toWrite;*/
 		}
 	}
 	return 0;
 }
 #include "headers/ps2.h"
-uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){
+uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){ //TODO: my implementation is backwards! it's first in last out; needs to be FIFO!
 	//position is unused
 	stdIO * pairIn = arguments -> pairIn;
 	int toRead = 0;
@@ -232,23 +272,29 @@ uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64
 	if(pairIn == NULL){ //closed stdin
 		memfill(buffer, len);
 		return 0; //fail silently	
-	}else if(pairIn == TermSP){
-		while(len > 0x0){ //TODO: ps/2
-			if(keyboard_buffer_end == 0x0)  continue;
-			((uint8_t*)buffer)[bpos++] = keyboard_buffer[keyboard_buffer_end--].ascii;
-			len--;
-		}
 	}else{
 		while(len > 0x0){
 			if(arguments->pairIn == NULL) return 0; //closed in the middle...
-			toRead = (pairIn->bcount>len)?(len):(pairIn->bcount);
-			if(toRead == 0x0) continue; //TODO: block for IO
-						    //this will HALT the system if two processes are waiting for stuff at the same time...
-			memcpy( (char*)(buffer)+bpos, pairIn->bufferOut, toRead);
-			bpos+=toRead;
-			memcpy(pairIn->bufferOut, (char*)(pairIn->bufferOut)+toRead, pairIn->bcount-toRead);
-			pairIn->bcount -= toRead;
-			len -= toRead;
+			if(arguments->pairIn->bufferOut->block_read){
+				continue;
+			}
+			arguments->pairIn->bufferOut->block_write = 1;
+			//read from the first buffer, if it has no data and isn't the last one then free and move
+			toRead = MIN(arguments->pairIn->bufferOut->datac, len);
+			if(toRead == 0){
+				if(arguments->pairIn->bufferOut != arguments->pairIn->bufferOutEnd){
+					stdFIFOBUF * m = arguments->pairIn->bufferOut;
+					arguments->pairIn->bufferOut = m->next;
+					free(m);
+				}else{
+					arguments->pairIn->bufferOut->block_write = 0;
+				}
+			}else{
+				memcpy(buffer+bpos, arguments->pairIn->bufferOut->data, toRead);
+				memcpy(arguments->pairIn->bufferOut->data, arguments->pairIn->bufferOut->data+toRead, 0xff-toRead); //I'm not sure if this works :3
+				arguments->pairIn->bufferOut->datac -= toRead;
+				arguments->pairIn->bufferOut->block_write = 0;
+			}
 		}
 	}
 	return 0;
@@ -262,29 +308,44 @@ uint64_t StdIOStream(void * arguments, uint64_t position, void * buffer, uint64_
 		//we need to signal to the other process that we've closed our buffer...
 		free(arguments);
 		return 0x0;
+	}else if(rw == 0x3){
+		return 0x0;
 	}else{
 		ERROR(ERR_FILESTREAM_RW, rw);
 		return 0x0;
 	}
 }
+void PS2_DRIVER_BIND_STDIO(){
+	//assume stdio already exists and is unbound
+	free(((stdIO*)(kernelFd[0].arguments))->bufferOut);
+	free(((stdIO*)(kernelFd[0].arguments)));
+	(kernelFd[0].arguments) = TermSP;
+}
 void OpenStdIn(){
 	if(!stdinSetup){
 		stdinSetup = 0x1;
 		TermSP = malloc(sizeof(stdIO));
-		TermSP->bufferOut = KPALLOC();
-		TermSP->bcount = 0;
-		//TODO
+		TermSP->bufferOut = malloc(sizeof(stdFIFOBUF));
+		TermSP->bufferOutEnd = TermSP->bufferOut;
+		TermSP->bufferOut->datac = 0; //TODO: this might have a fencepost
+		TermSP->bufferOut->next = NULL;
+		//bind TermSP to PS2_DRIVER? Will need to do this in some kinda exec()?
 	}
 	stream * m = malloc(sizeof(stream));
 	m->function = StdIOStream;
 	m->arguments = malloc(sizeof(stdIO));
 	((stdIO*)(m->arguments)) -> pairIn= TermSP;
 	((stdIO*)(m->arguments)) -> pairOut= TermSP; //should be NULL unless another process tries to bind to us... idk yet
-	((stdIO*)(m->arguments)) -> bufferOut= KPALLOC();
-	((stdIO*)(m->arguments)) -> bcount= 0;
+	((stdIO*)(m->arguments)) -> bufferOut= malloc(sizeof(stdFIFOBUF));
+	((stdIO*)(m->arguments)) -> bufferOutEnd= ((stdIO*)(m->arguments))->bufferOut;
+	((stdIO*)(m->arguments)) -> bufferOut->datac=0;
+	((stdIO*)(m->arguments)) -> bufferOut->next=NULL;
 	((stdIO*)(m->arguments)) -> type= 0; //normal process
 	m->position = 0x0;
 	m->flags = 0x0;
+	if(kernelFd[0].function != NULL){
+		ERROR(ERR_STDIO_NONZ, 0);
+	}
 	while(kernelFdLastClosed<kernelFdLen && kernelFd[kernelFdLastClosed].function != NULL){
 		kernelFdLastClosed++;
 	}
@@ -320,14 +381,29 @@ void WRITE(uint64_t fd, void * buffer, uint64_t len){
 	}
 	kernelFd[fd].position = (kernelFd[fd].function)(kernelFd[fd].arguments, kernelFd[fd].position, buffer, len, 0x1);
 }
-void SEEK(uint64_t fd, uint64_t pos){
+void SEEK(uint64_t fd, uint64_t pos, uint64_t WHENCE){
 	if(fd>kernelFdLen){
 		ERROR(ERR_FD_TOOHIGH, fd);
 	}
 	if(kernelFd[fd].function == NULL){
 		ERROR(ERR_FD_DNE, fd);
 	}
-	kernelFd[fd].position = pos;
+	if(WHENCE == 0x0){
+		kernelFd[fd].position = pos;
+	}else if(WHENCE == 0x1){
+		kernelFd[fd].position = kernelFd[fd].position+pos;
+	}else{
+		kernelFd[fd].position = (kernelFd[fd].function)(kernelFd[fd].arguments, kernelFd[fd].position, NULL, 0x0, 0x3);
+	}
+}
+uint64_t TELL(uint64_t fd){
+	if(fd>kernelFdLen){
+		ERROR(ERR_FD_TOOHIGH, fd);
+	}
+	if(kernelFd[fd].function == NULL){
+		ERROR(ERR_FD_DNE, fd);
+	}
+	return kernelFd[fd].position;
 }
 uint64_t OPEN(char * filename, uint64_t flags){
 	stream * m = OpenFilename(root, filename, flags);
@@ -518,6 +594,9 @@ void start_init_task(){
 	while(keyboard_init == 0x0){
 		nano_sleep(0x1000000);
 	}
+//	while(1){ //just let the driver do its stuff
+//		nano_sleep(0x1000000);
+//	}
 	InitKernelFd();
 	run_EXE("/sbin/init\0"+CBASE);
 /*	uint64_t id = OPEN("/TXT\0"+CBASE, 0x0); //for some reason this gives us root instead of txt

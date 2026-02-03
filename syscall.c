@@ -18,8 +18,12 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){
 			CLOSE(rsi);
 			return 0x0;
 		case 0x4: //seek
-			SEEK(rsi, rdx);
+			SEEK(rsi, rdx, rcx);
 			return 0x0;
+		case 0x5: //extend memory, should always return the next seg
+			return (uint64_t)UPALLOC(0x2);
+		case 0x6: //tell
+			return TELL(rsi);
 		default:
 			return -1;
 	}

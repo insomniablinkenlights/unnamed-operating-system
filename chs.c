@@ -109,10 +109,14 @@ void FLOPPY_SEND_COMMAND(uint8_t cmd, uint8_t * param1, uint8_t *param1l, uint8_
 	//while(inb(MAIN_STATUS_REGISTER)&0x10){}
 	
 	if((cmd&(~0x40)) == READ_DATA || (cmd&(~0x40)) == WRITE_DATA){ 
-	       	wait_for_irq(0x06, 10000000, &wffi_err);
+	       	wait_for_irq(0x06, 3000000000, &wffi_err);
+	//	PIC_sendEOI(0x06);
 //	outb(DATA_FIFO, SENSE_INTERRUPT);
 	}
-	else if(cmd == RECALIBRATE){ wait_for_irq(0x06, 3000000000, &wffi_err);}
+	else if(cmd == RECALIBRATE){ 
+		wait_for_irq(0x06, 3000000000, &wffi_err);
+	//	PIC_sendEOI(0x06);
+	}
 	//else{
 	timeout=1000;
 	if(out1l == out1){

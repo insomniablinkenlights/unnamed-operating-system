@@ -112,9 +112,6 @@ void free(void * ptr){
 	uint64_t resizebitmask = ((1<<size)-1);
 	uint64_t resizebitmaskjshift = resizebitmask <<(j-size+1); //imagine size=3, j=5, 0b111000
 	if((*bitmaskptr & resizebitmaskjshift)){ //malloc is returning a region within the free?
-		BREAK(j);
-		BREAK(size);
-		BREAK(resizebitmaskjshift);
 		ERROR(ERR_FREE_BADMETADATA, *bitmaskptr & resizebitmaskjshift);
 	}
 	*bitmaskptr ^= resizebitmaskjshift;

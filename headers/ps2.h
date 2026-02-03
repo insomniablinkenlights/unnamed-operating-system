@@ -7,8 +7,6 @@ typedef struct __attribute__((packed)) KP{
 	uint8_t pR;
 	uint8_t states;
 }KP;
-extern KP * keyboard_buffer;
-extern uint64_t keyboard_buffer_end;
 void PS2_DRIVER();
 extern uint8_t keyboard_init;
 #endif

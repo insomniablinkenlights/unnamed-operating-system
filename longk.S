@@ -14,10 +14,11 @@ mov %bx, %ss
 
 
 //SCAN PCI DEVICES
+//let's not actually
 call P_ALLOC3_SETUP
-call KPALLOC
-mov %rax, %rdx
-call PCI_SCAN
+//call KPALLOC
+//mov %rax, %rdx
+//call PCI_SCAN
 
 //CONSTRUCT IDT
 call KPALLOC

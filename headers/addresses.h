@@ -2,7 +2,8 @@
 #define addresses
 #define page_directory_address = 0x10000;
 #define CBASE 0x8000000000
-#define MBASE CBASE+0x10000
+#define MBASE (CBASE+0x20000)
+#define MIN(a,b) (((a)<(b))?(a):(b))
 void * KPALLOC();
 void * UPALLOC(uint8_t FLAGS);
 void FAULT();
@@ -15,6 +16,7 @@ void STI();
 void BREAK(uint64_t data);
 void HLT();
 void PIC_sendEOI(uint8_t irq);
+void PIC_PS2();
 uint32_t DIV64_32(uint64_t dd, uint32_t ds);
 uint32_t MOD64_32(uint64_t dd, uint32_t ds);
 void outb(uint16_t port, uint8_t data);
@@ -78,6 +80,11 @@ enum ERROR_CODES{
 	ERR_TFNTTNNZ = 0x32,
 	ERR_SPLIT_FAIL = 0x33,
 	ERR_OPEN_TWO=0x34,
+	ERR_NOKEYBOARD=0x35,
+	ERR_KC_OOR=0x36,
+	ERR_STDIO_NONZ=0x37,
+	ERR_MBASE_TOOHIGH=0x38,
+	ERR_PML4_DNE=0x39,
 };
 #define NULL  ((void*)0x0)
 

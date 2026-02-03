@@ -40,6 +40,7 @@ uint8_t READ_8042(){
 }
 uint8_t PS2_IS_DUAL_CHANNEL = 0;
 uint8_t PS2_SUPPORTED_CHANNELS = 0;
+uint8_t PS2_KB_CHANNEL = 0;
 uint8_t READ_KB_DATA(){
 	wait_for_irq(0x1, 0x0, NULL);
 	//TODO: fix wfirq
@@ -108,15 +109,18 @@ void PS2_INIT(){
 		SEND_8042_CMD(0xAE);
 	}
 	if(PS2_SUPPORTED_CHANNELS&0x2){
-		SEND_8042_CMD(0xA8);
+	//	SEND_8042_CMD(0xA8);
+	//	temporarily disabled because we don't support mice yet
 	}
 	SEND_8042_CMD(0x20);
 	j = READ_8042();
-	j = (j&(~0x3))|PS2_SUPPORTED_CHANNELS;
-	SEND_8042_CMD(0x60);
+	j = (j&(~0x3))|PS2_SUPPORTED_CHANNELS|(1<<6); //enable tl
+	SEND_8042_CMD(0x60); //TODO: enable scan convert
 	SEND_8042_DATA(j);
 	//reset devices
-	SEND_8042_DATA(0xFF);
+	PIC_PS2();
+
+/*	SEND_8042_DATA(0xFF);
 	READ_KB_DATA();
        	READ_KB_DATA(); //TODO: verify that the devices reset successfully
 	if(PS2_IS_DUAL_CHANNEL){
@@ -124,7 +128,43 @@ void PS2_INIT(){
 		SEND_8042_DATA(0xFF);
 		READ_KB_DATA2(); 
 		READ_KB_DATA2();
+	}*/
+
+	//detect which channel is keyboard
+	PS2_KB_CHANNEL=PS2_SUPPORTED_CHANNELS;
+/*	if(PS2_SUPPORTED_CHANNELS&0x1){
+		SEND_8042_DATA(0xF5);
+		READ_KB_DATA();
+		SEND_8042_DATA(0xF2);
+		READ_KB_DATA();
+		uint8_t b = READ_KB_DATA();
+		if(b == 0xAB || b == 0xAC){
+			uint8_t b2 = READ_KB_DATA();
+		}
+		if(b == 0x03 || b == 0x00 || b == 0x04){
+			PS2_KB_CHANNEL ^= 0x1;
+		}
+		SEND_8042_DATA(0xF4);
+		READ_KB_DATA();
 	}
+	if(PS2_SUPPORTED_CHANNELS&0x2){
+		SEND_8042_CMD(0xD4);
+		SEND_8042_DATA(0xF5);
+		READ_KB_DATA();
+		SEND_8042_CMD(0xD4);
+		SEND_8042_DATA(0xF2);
+		READ_KB_DATA();
+		uint8_t b = READ_KB_DATA();
+		if(b == 0xAB || b == 0xAC){
+			uint8_t b2 = READ_KB_DATA();
+		}
+		if(b == 0x03 || b == 0x00 || b == 0x04){
+			PS2_KB_CHANNEL ^= 0x2;
+		}
+		SEND_8042_CMD(0xD4);
+		SEND_8042_DATA(0xF4);
+		READ_KB_DATA();
+	}*/
 }
 
 uint8_t * KM;
@@ -132,7 +172,6 @@ uint8_t KMI = 0;
 uint8_t KeyMap(uint8_t keycode, uint8_t mods){
 	if(!KMI){
 		KM = KPALLOC();
-		InitKernelFd();
 		uint64_t m = OPEN("/etc/keymap"+CBASE, 0x3);
 		READ(m, KM, 0x200); //512 bytes == four layers
 				     //layers: 0, shift, right alt, shift + right alt
@@ -145,29 +184,39 @@ uint8_t KeyMap(uint8_t keycode, uint8_t mods){
 	return KM[index];
 	
 }
-KP * keyboard_buffer = NULL;
-uint64_t keyboard_buffer_end;
 uint8_t keyboard_init = 0x0;
-void init_keyboard_PS2(){
-	keyboard_buffer  = KPALLOC();
-	keyboard_buffer_end = 0;
-}
 void PS2_DRIVER(){
-	/* we'll push stuff onto the keyboard buffer, and if the length is too much remove the older stuff */
+	//to output we'll use WRITE(0, &k, sizeof(KP));
 	uint8_t LsRsLaRaClNlLctRct = 0; //states obviously
 	uint8_t b1 = 0;
 	uint8_t b2 = 0;
-	KP k;
+	KP * k = malloc(sizeof(KP)); //static arrays fuck it up -- don't know why it didn't break until now !
 	PS2_INIT();
-	init_keyboard_PS2();
+	InitKernelFd(); 
+	PS2_DRIVER_BIND_STDIO();
+	KeyMap(0, 0);
 	keyboard_init=1;
 	while(1){
-		b1 = READ_KB_DATA();
+		if(PS2_KB_CHANNEL & 0x1){
+			b1 = READ_KB_DATA();
+		}//else if(PS2_KB_CHANNEL & 0x2){
+		//	b1 = READ_KB_DATA2();
+		//}
+		else {
+			ERROR(ERR_NOKEYBOARD,0x0);
+		}
 		if(b1 == 0xe0){
-			b2 = READ_KB_DATA();
-			k.keycode=b2|0x80;
-			k.pR = (b2&0x80)>>7;
-			switch(k.keycode^0x80){
+			if(PS2_KB_CHANNEL & 0x1){
+				b2 = READ_KB_DATA();
+			}//else if(PS2_KB_CHANNEL & 0x2){
+			//	b2 = READ_KB_DATA2();
+			//}
+			else {
+				ERROR(ERR_NOKEYBOARD,0x0);
+			}
+			k->keycode=b2|0x80;
+			k->pR = (b2&0x80)>>7;
+			switch(k->keycode^0x80){
 				case 0x1D:
 					LsRsLaRaClNlLctRct ^= 0x80;
 					break;
@@ -175,22 +224,14 @@ void PS2_DRIVER(){
 				       LsRsLaRaClNlLctRct^=0x8;	
 				       break;
 				default:
-				       k.ascii = KeyMap(k.keycode, LsRsLaRaClNlLctRct);
-				       k.states = LsRsLaRaClNlLctRct;
-					if((keyboard_buffer_end+1)*8<0x1000){ //8 is sizeof KP
-						keyboard_buffer[keyboard_buffer_end] = k;
-						keyboard_buffer_end++;
-					}else{
-						for(uint64_t i = 0; i<keyboard_buffer_end-1; i++){
-							keyboard_buffer[i] = keyboard_buffer[i+1];
-						}
-						keyboard_buffer[keyboard_buffer_end] = k;
-					}
+				       k->ascii = KeyMap(k->keycode, LsRsLaRaClNlLctRct);
+				       k->states = LsRsLaRaClNlLctRct;
+			       	       WRITE(0, k, sizeof(KP));	       
 			}
 		}else{
-			k.keycode = b1&~(0x80);
-			k.pR = (b1&0x80)>>7;
-			switch(k.keycode){
+			k->keycode = (b1|0x80)^0x80; //&0x7F is better
+			k->pR = (b1&0x80)>>7;
+			switch(k->keycode){
 				case 0x1D:
 					LsRsLaRaClNlLctRct ^= 0x40; //lct
 					break;
@@ -210,18 +251,12 @@ void PS2_DRIVER(){
 					LsRsLaRaClNlLctRct ^= 0x20; //nl
 					break;
 				default:
-					k.ascii = KeyMap(k.keycode, LsRsLaRaClNlLctRct);
-					k.states = LsRsLaRaClNlLctRct;
-					if((keyboard_buffer_end+1)*8<0x1000){ //8 is sizeof KP
-						keyboard_buffer[keyboard_buffer_end] = k;
-						keyboard_buffer_end++;
-					}else{
-						for(uint64_t i = 0; i<keyboard_buffer_end-1; i++){
-							keyboard_buffer[i] = keyboard_buffer[i+1];
-						}
-						keyboard_buffer[keyboard_buffer_end] = k;
+					if(k->keycode > 0x80){
+						ERROR(ERR_KC_OOR, k->keycode);
 					}
-
+					k->ascii = KeyMap(k->keycode, LsRsLaRaClNlLctRct);
+					k->states = LsRsLaRaClNlLctRct;
+			       	        WRITE(0, k, sizeof(KP));	       
 			}
 		}
 	}

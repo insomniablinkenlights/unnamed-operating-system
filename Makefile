@@ -45,4 +45,4 @@ build/%.o: userland/%.S
 build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h
 	gcc insertFileSystem/main.c -o build/insertFileSystem.out
 clean:
-	rm build/*.o build/*.s build/*.out build/*.bin -v --one-file-system
+	rm build/*.o build/*.s build/*.out build/*.bin build/keymap -v --one-file-system

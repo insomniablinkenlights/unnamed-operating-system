@@ -36,6 +36,18 @@ void IRQ_clear_mask(uint8_t IRQline){
 	value = inb(port) & ~(1<<IRQline);
 	outb(port, value);
 }
+void IRQ_set_mask(uint8_t IRQline){
+	uint16_t port;
+	uint8_t value;
+	if(IRQline < 8){
+		port=PIC1+1;
+	}else{
+		port=PIC2+1;
+		IRQline -=8;
+	}
+	value = inb(port) & (1<<IRQline);
+	outb(port, value);
+}
 void PIC_sendEOI(uint8_t irq){
 	if(irq >= 8)
 		outb(PIC2, 0x20);
@@ -117,5 +129,5 @@ void PIC_FL(){
 }
 void PIC_PS2(){
 	IRQ_clear_mask(0x1);
-	IRQ_clear_mask(12);
+	IRQ_set_mask(12);
 }

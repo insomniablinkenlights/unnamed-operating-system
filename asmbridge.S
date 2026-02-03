@@ -63,7 +63,7 @@ push %rbx
 movabsq $(current_task_TCB), %rax
 movq (%rax), %rax
 movq 60(%rax), %rax
-movabsq $0x8000020000, %rbx
+movabsq $0x8000030000, %rbx
 movq 8(%rbx), %rbx
 mov %rbx, 8(%rax)
 mov %cr3, %rax
@@ -144,7 +144,7 @@ cmp %rax, %rcx
 je STDONE
 //they have diff' cr3s
 //swap user mem in...
-movabsq $(0x8000020000), %rbx
+movabsq $(0x8000030000), %rbx
 movq (%rbx), %rsi
 movq %rsi, (%rax)
 movq (%rcx), %rsi
@@ -240,7 +240,7 @@ mov %ax, %fs
 mov %ax, %gs
 mov %rsp, %rax
 push $(0x20|3)
-push $0x10000
+push $0x30000
 pushf
 push $(0x18|3)
 push %rdi

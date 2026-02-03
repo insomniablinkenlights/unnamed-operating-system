@@ -95,6 +95,7 @@ void update_time_used(){
 }
 void initialize_multitasking(){
 	initMalloc(); //shouldn't put it here but who cares anymore
+	memfill((uint64_t*)(MBASE+0x1d000), sizeof(thread_control_block)); //just in case...
 	((thread_control_block*)(MBASE+0x1d000))->rsp=(void*)(CBASE+0x7bff);
 	((thread_control_block*)(MBASE+0x1d000))->rsp0=(void*)(CBASE+0x7bff);
 	((thread_control_block*)(MBASE+0x1d000))->state=STATE_RUNNING;
@@ -108,9 +109,11 @@ void initialize_multitasking(){
 	current_task_TCB->timeout_function = NULL;
 	current_task_TCB->file_descriptors = NULL;
 	current_task_TCB->cr3 = KPALLOC();
-	memfill(current_task_TCB->cr3, 0x1000);
+	memfill(current_task_TCB->cr3, 0x1000); //yeah this is fucked up
 	current_task_TCB->vaddsp = NULL;
 	current_task_TCB->kernelFdLen = 0x0;
+	FIRST_THREAD=NULL;
+	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
@@ -124,7 +127,7 @@ void switch_to_task_wrapper(thread_control_block * task){
 	}
 	if(current_task_TCB == NULL){
 		time_slice_remaining = 0;
-	}else if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){
+	}else if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){ //if we have only blocked tasks
 		time_slice_remaining = 0;
 	}else{
 		time_slice_remaining = 50000000;
@@ -136,17 +139,25 @@ void switch_to_task_wrapper(thread_control_block * task){
 thread_control_block * create_kernel_task(void startingRIP(void)){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
-	M->rsp0=M2+0xFFF;
-	M->rsp=M2+0xFFF-4*8;
+	//lowkey i think this is the error
+	M->rsp0=M2+0xFF8;
+	M->rsp=M2+0x1000-5*8; //near ret is used in stt, we pop four quads (rbp -> rdi -> rsi -> rbx) and then pop rip
 	M->state = STATE_READY;
 	M->next=0x0;
-	M->priority = 0x0; M->ttn = 0x0; M->time_used = 0x0; M->PL =0x0; M->timeout_function = NULL; M->irq_waiting_for=0x0; M->file_descriptors=NULL; 
+	M->priority = 0x0; 
+	M->ttn = 0x0;
+       	M->time_used = 0x0;
+       	M->PL =0x0; 
+	M->timeout_function = NULL;
+       	M->irq_waiting_for=0x0;
+       	M->file_descriptors=NULL; 
 	M->cr3=KPALLOC(); //each task has its own cr3 where the top half is the same as in our mbase and the bottom half is usermode
 	memfill(M->cr3, 0x1000);
 				//so each time we update kernel memory we need to update both actual cr3 and 0x10000? 
 				//nah, when we switch out we'll just change the 10k
-	M->vaddsp=NULL;M->kernelFdLen=0x0;
-	((void **)(M2+0xFFF))[0] = startingRIP;
+	M->vaddsp=NULL;
+	M->kernelFdLen=0x0;
+	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	if(FIRST_THREAD != NULL){
 		LAST_THREAD->next = M;
 		LAST_THREAD= M;
@@ -277,7 +288,7 @@ void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	current_task_TCB->timeout_function = timeout_function;
 	irqwaiting=current_task_TCB;
 	unlock_stuff();
-	block_task(STATE_WAITING_FOR_IRQ);
+	block_task(STATE_WAITING_FOR_IRQ); //for some reason we never switch back!
 }
 void unblockirq(uint8_t irq){
 	thread_control_block * next_task;

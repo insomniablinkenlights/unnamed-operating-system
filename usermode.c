@@ -33,7 +33,6 @@ void run_EXE(char * name){
 	//TODO: tasks need to switch between virtual address spaces
 	void * initialM = UPALLOC(0x2);
 	uint64_t id = OPEN(name, 0x0); 
-	BREAK(id);
 	READ(id, initialM, 0x200); //TODO: actually read the ENTIRE thing
 	CLOSE(id);
 	switchToUserModeProc(initialM);
