@@ -2,29 +2,63 @@
 #include "headers/usermode.h"
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
-uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){
+#include "headers/proc.h"
+uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //interrupts are disabled
+	uint64_t rV = 0;
+	CLI();
+	uint64_t * oldrsp0 = current_task_TCB->rsp0;
+	uint64_t * newrsp0 = KPALLOC();
+	loadRSP0(((uint64_t)newrsp0)+0xff8);
+	STI();
 	switch(rdi){
 		case 0x0: //read
-			if(!VERIFY_USER((void*)(rdx+rcx))) return 0x1;
-			READ(rsi, VERIFY_USER((void*)rdx), rcx);
-			return 0x0;
+			//this requires us to renable interrupts: save the rsp0, make a new one, enable interrupts, call our shit, disable interrupts, get rid of our rsp0 -- actually, most of them do!
+			READ(rsi, VERIFY_USER((void*)rdx), rcx); //we might switch to another usermode task during this... that has problems that I'm not thinking about
+			rV= 0x0;
+			break;
 		case 0x1: //write
-			if(!VERIFY_USER((void*)(rdx+rcx))) return 0x1;
 			WRITE(rsi, VERIFY_USER((void*)rdx), rcx);
-			return 0x0;
+			rV = 0x0;
+			break;
 		case 0x2: //open
-			return OPEN(VERIFY_USER((void*)rsi), VERIFY_FLAGS(rdx));
+			rV = OPEN(VERIFY_USER((void*)rsi), VERIFY_FLAGS(rdx));
+			break;
 		case 0x3: //close
 			CLOSE(rsi);
-			return 0x0;
+			rV = 0x0;
+			break;
 		case 0x4: //seek
 			SEEK(rsi, rdx, rcx);
-			return 0x0;
+			rV = 0x0;
+			break;
 		case 0x5: //extend memory, should always return the next seg
-			return (uint64_t)UPALLOC(0x2);
+			rV = (uint64_t)UPALLOC(0x2);
+			break;
 		case 0x6: //tell
-			return TELL(rsi);
+			rV = TELL(rsi);
+			break;
+		case 0x7: //exec
+			//for this, arguments need to be added to cktask?
+			rV = ExecFile(VERIFY_USER((void*)rsi), VERIFY_USER((void*)rdx)); //TODO: verify file
+			break;
+		case 0x8: //bind
+			BIND_HANDLES(rsi, rdx);
+			rV = 0;
+			break;
+		case 0x9: //exit
+			//we'll always be inside the process that called exit, but check just in case
+			UM_CLEANUP();
+			ERROR(ERR_DEADCODE, 0);
+			rV = -1; //should NOT get to this statement!
+			break;
 		default:
-			return -1;
+			ERROR(ERR_INT, rdi);
+			rV = -1;
+			break;
 	}
+	CLI();
+	P_FREE(newrsp0);
+	loadRSP0((uint64_t)oldrsp0);
+	return rV;
+
 }

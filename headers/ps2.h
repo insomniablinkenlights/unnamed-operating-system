@@ -9,4 +9,5 @@ typedef struct __attribute__((packed)) KP{
 }KP;
 void PS2_DRIVER();
 extern uint8_t keyboard_init;
+extern uint8_t keyboard_is_raw;
 #endif

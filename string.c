@@ -8,3 +8,6 @@ int strcmp(char * a, char * b){
 	}
 	return a[i]-b[i];
 }
+int checkCorruption(){
+	return 0xb339b009;
+}

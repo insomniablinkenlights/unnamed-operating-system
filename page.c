@@ -74,38 +74,8 @@ void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 	}
 	return (void*)k;
 }
-void * UPALLOC(uint8_t FLAGS){ // THIS FUNCTION BREAKS IF CALLED TWICE
-	//ACTUALLY, fuck all this, temporary bullshit go !!!
+void * UPALLOC(uint8_t FLAGS){ 
 	return UP_ALLOC3(FLAGS);
-	
-	
-	// 0xc0017000 contains a stack of 64 bit page virtual addresses
-	// doesn't work
-	// 0xc0017000 contains a stack of virtual pointers to PTs
-	// we modify the flags of the PT, convert its ph.ad to vt, return
-/*	uint64_t k = 0x0;
-	uint16_t AN = 0x0;
-	for(int i = 0; i<512; i++){
-		AN = i;
-		if(((uint64_t*)0xc0017000)[i] != 0x0){
-			k = ((uint64_t*)0xc0017000)[i];
-			((uint64_t*)0xc0017000)[i] = 0x0;
-			break;
-		}
-	}
-	if(k == 0x0){
-		FAULT();
-	}
-	if(AN > 500){
-		if(!PA_CALLING){
-			for(int i = 0; i<511; i++){
-				if(((uint64_t*)0xc0017000)[i]==0x0) continue;
-				((uint64_t*)0xc0017000)[i] = (uint64_t)UP_ALLOC3(0x0); //breaks
-			}
-		}
-	}
-
-	return (void*)k; //breaks*/
 }
 void * PL_MAP_START = (void*)(MBASE+0x15000);
 void * LL_NV(uint64_t index, void * PLM){ //we want to return the index'th quad in a linked list PLM
@@ -394,4 +364,25 @@ void * VERIFY_USER(void * rdx){
 	       	return NULL;
 	}
 	return rdx; //_might_ cause PF, but never GP
+}
+void U_PFREEALL(){
+	//loop through pdpt -> pde -> pt, free, free, free
+	//everything in UM belongs to our proc because mmio isn't implemented yet
+	//tables need to have the memory which allocates the TABLE freed followed by the top level entry which points to the table AS a table
+	for(int pdpt = 0; pdpt<512; pdpt++){
+		if((get_pdptV(0, pdpt)&0x1) != 0x0){
+			for(int pde = 0; pde<512; pde++){
+				if((get_pdeV(0, pdpt, pde)&0x1) != 0x0){
+					for(int pt = 0; pt<512; pt++){
+						P_FREE((void*)construct_virtual_address(0, pdpt, pde, pt));
+					}
+					//pt does this for us
+				}
+				P_FREE(get_pdeVP(0, pdpt, pde));
+				get_pdptVP(0, pdpt)[pde] = 0x0;
+			}
+		}
+		P_FREE(get_pdptVP(0, pdpt)); //the kernel page which allocates the pdpt table itself
+		get_pml4VP(0)[pdpt] = 0; //the entry itself
+	}
 }

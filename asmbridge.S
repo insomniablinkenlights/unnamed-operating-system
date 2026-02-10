@@ -114,7 +114,7 @@ je ST2
 
 mov %rsp, (%rbx)
 movb 24(%rbx), %cl
-//if state is 0 then we don't care
+//if state is 0 (running) then we don't care
 cmp $0x0, %cl
 jne ST2
 //replace on list if it's still running
@@ -255,6 +255,11 @@ Int0x80Handler:
 //arguments are passed in standard sysv style
 //already on stack: ss, sp, flags, cs, ip
 //need to push ax, gs, fs, es, ds, -ENOSYS, bp, di, si, dx, cx, bx
+//the problem is that if we get an interrupt while our TSS's rsp0 is set to this we get a lot of funny shit, I think, so I should find what rsp0 is before this shit
+//yeah, I'm almost completely sure that the issue is that getting an interrupt while in our int 0x80 handler is loading into the stack OF the handler, corrupting shit -- to fix this we'll need to have one initial stack which loads into our actual stack
+//I think the best thing to do is maybe make a new stack for the next interrupt?
+//just load in a new rsp0 to the tss when we're using the one it currently has, we then basically take that rsp0 for ourselves ^w^
+cli
 push %rcx
 push %rdx
 push %r8
@@ -272,6 +277,7 @@ pop %r9
 pop %r8
 pop %rdx
 pop %rcx
+sti
 iretq
 .global PS2_HANDLER
 PS2_HANDLER:

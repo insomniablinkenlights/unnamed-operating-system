@@ -12,7 +12,6 @@ shr $8, %eax*/
 mov $0x10, %bx
 mov %bx, %ss
 
-
 //SCAN PCI DEVICES
 //let's not actually
 call P_ALLOC3_SETUP

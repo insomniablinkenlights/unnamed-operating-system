@@ -1,6 +1,7 @@
 #include "headers/stdint.h"
 #include "headers/addresses.h"
 #include "headers/proc.h"
+#include "headers/usermode.h"
 /*
  *	IMPORTANT
  *	when switching between two tasks, the tasks will ALWAYS be in kernel mode, always being interrupt handlers or whatever
@@ -21,7 +22,22 @@
  * */
 long long int IRQ_disable_counter = 0;
 uint64_t task_switches_postponed_flag=0;
+uint64_t next_PID = 1;
 long long int postpone_task_switches_counter=0;
+uint64_t time_slice_remaining=50000000;
+thread_control_block * current_task_TCB = NULL;
+uint64_t last_count = 0;
+thread_control_block * FIRST_THREAD = NULL;
+thread_control_block * LAST_THREAD = NULL;
+thread_control_block * DEAD_TASKS = NULL;
+thread_control_block * sleeping_task_list = NULL;
+thread_control_block * irqwaiting = NULL;
+thread_control_block * procwaiting = NULL;
+uint64_t TIME=0;
+uint64_t CPU_idle_time = 0;
+void schedule();
+void switch_to_task(thread_control_block* next_thread);
+void unblockP(uint64_t pid);
 void lock_scheduler(){
 	#ifndef SMP
 	CLI();
@@ -43,21 +59,16 @@ void lock_stuff(){
 	postpone_task_switches_counter++;
 #endif
 }
-void schedule();
-thread_control_block * current_task_TCB;
-uint64_t last_count;
-thread_control_block * FIRST_THREAD;
-thread_control_block * LAST_THREAD;
 enum task_states {
 	STATE_RUNNING,
 	STATE_READY,
 	STATE_WAITING,
 	STATE_DEAD,
 	STATE_PAUSED,
-	STATE_WAITING_FOR_IRQ
+	STATE_WAITING_FOR_IRQ,
+	STATE_WAITING_FOR_PROC_UPDATE,
+	STATE_WAITING_FOR_LOCK
 };
-uint64_t TIME=0;
-uint64_t CPU_idle_time = 0;
 uint64_t get_time_since_boot(){
 	return TIME;
 }
@@ -109,6 +120,8 @@ void initialize_multitasking(){
 	current_task_TCB->timeout_function = NULL;
 	current_task_TCB->file_descriptors = NULL;
 	current_task_TCB->cr3 = KPALLOC();
+	current_task_TCB->pid = next_PID++;
+	current_task_TCB->pidW = 0;
 	memfill(current_task_TCB->cr3, 0x1000); //yeah this is fucked up
 	current_task_TCB->vaddsp = NULL;
 	current_task_TCB->kernelFdLen = 0x0;
@@ -117,9 +130,6 @@ void initialize_multitasking(){
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
-void switch_to_task(thread_control_block* next_thread);
-
-uint64_t time_slice_remaining=50000000;
 void switch_to_task_wrapper(thread_control_block * task){
 	if(postpone_task_switches_counter != 0){
 		task_switches_postponed_flag = 1;
@@ -127,16 +137,29 @@ void switch_to_task_wrapper(thread_control_block * task){
 	}
 	if(current_task_TCB == NULL){
 		time_slice_remaining = 0;
-	}else if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){ //if we have only blocked tasks
-		time_slice_remaining = 0;
 	}else{
-		time_slice_remaining = 50000000;
+		if(current_task_TCB->state == STATE_DEAD){
+			//add to the reaper list
+			current_task_TCB->next = DEAD_TASKS;
+			DEAD_TASKS=current_task_TCB;
+		}
+		if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){ //if we have only blocked tasks
+			time_slice_remaining = 0;
+		}else{
+			time_slice_remaining = 50000000;
+		}
 	}
 	update_time_used();
+	//free dead task's stuff IN stt
 	//switch fd?
+	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }
 thread_control_block * create_kernel_task(void startingRIP(void)){
+	//deprecating it
+	return ckprocA((void (*) (void *))startingRIP, NULL);
+}
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
 	//lowkey i think this is the error
@@ -157,7 +180,10 @@ thread_control_block * create_kernel_task(void startingRIP(void)){
 				//nah, when we switch out we'll just change the 10k
 	M->vaddsp=NULL;
 	M->kernelFdLen=0x0;
+	M->pid = next_PID++;
+	M->pidW = 0;
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
+	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!
 	if(FIRST_THREAD != NULL){
 		LAST_THREAD->next = M;
 		LAST_THREAD= M;
@@ -168,6 +194,20 @@ thread_control_block * create_kernel_task(void startingRIP(void)){
 
 	M->time_used=0x0;
 	return M;
+}
+void reap(){
+	thread_control_block * task = DEAD_TASKS;
+	while(task != NULL){
+		//free the stack somehow? doesn't work for the first task though
+		unblockP(task->pid);
+		if(task->file_descriptors) P_FREE(task->file_descriptors);
+		if(task->cr3) P_FREE(task->cr3);
+		//vaddsp is unused
+		thread_control_block * next = task->next;
+		//free(task); //this doesn't work for the first task!
+		task = next;
+	}
+	DEAD_TASKS = NULL;
 }
 void schedule(){
 	//what really is a scheduler
@@ -182,6 +222,7 @@ void schedule(){
 //	if(current_task_TCB == NULL){
 //		asm volatile("xchgw %bx, %bx; call FAULT");
 //	}
+	reap();
 	if(FIRST_THREAD != NULL){
 		task = FIRST_THREAD;
 		FIRST_THREAD=task->next;
@@ -251,7 +292,6 @@ void unblock_task(thread_control_block * task){
 	unlock_scheduler();
 }
 
-thread_control_block * sleeping_task_list;
 void nano_sleep_until(uint64_t t){
 	lock_stuff();
 	if(t<get_time_since_boot()){
@@ -275,7 +315,6 @@ void sleep(uint64_t t){
 	t=t*1000000000; //TODO: broken for no fucking reason
 	nano_sleep(t);
 }
-thread_control_block * irqwaiting;
 void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	lock_stuff();
 	current_task_TCB->irq_waiting_for = irq;
@@ -307,6 +346,117 @@ void unblockirq(uint8_t irq){
 	}
 	}
 	unlock_stuff();
+}
+thread_control_block * find_task_by_pid(uint64_t pid){ //doesn't work for tasks waiting for semaphores -- TODO
+	//check the list of running tasks, then the list of sleeping tasks, then the list of blocked tasks waiting for procs, then the list of blocked tasks waiting for irqs, then return NULL
+	//this should not be exposed to users
+	if(pid == 0) return current_task_TCB;
+	thread_control_block * task = NULL;
+	task = FIRST_THREAD;
+	pid |= ((uint64_t)1<<63);
+	while(task != NULL){
+		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
+		task = task->next;
+	}
+	task = sleeping_task_list;
+	while(task != NULL){
+		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
+		task = task->next;
+	}
+	task = procwaiting;
+	while(task != NULL){
+		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
+		task = task->next;
+	}
+	task = irqwaiting;
+	while(task != NULL){
+		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
+		task = task->next;
+	}
+	return NULL;
+}
+/*this might end up useless
+ * I think that the way to implement semaphores is a linked list of processes attached to a semaphore rather than a centralised "waiting for semaphore" list, so a linked list of semaphores and each semaphore has a value and a first and last process
+ * proberen() decrements semaphore value, if it's negative has the process sleep and go on the queue
+ * verhogen() increments semaphore value, if it's negative tells the scheduler to wake up one process from the queue*/
+SEMAPHORE * create_semaphore(int max_count){
+	SEMAPHORE * semaphore = malloc(sizeof(SEMAPHORE)); //damn it, it's undergoing semantic satiation now
+	semaphore->max_count = max_count;
+	semaphore->current_count = 0;
+	semaphore->first_waiting = NULL;
+	semaphore->last_waiting = NULL;
+	return semaphore;
+}
+void acquire_semaphore(SEMAPHORE * semaphore){
+	lock_stuff();
+	if(semaphore->current_count < semaphore->max_count){
+		//we can acquire it
+		semaphore->current_count ++;
+	}else{
+		//we have to wait
+		current_task_TCB->next = NULL;
+		if(semaphore->first_waiting == NULL){
+			semaphore->first_waiting = current_task_TCB;
+		}else{
+			semaphore->last_waiting->next = current_task_TCB;
+		}
+		semaphore->last_waiting = current_task_TCB;
+		block_task(STATE_WAITING_FOR_LOCK);
+	}
+	unlock_stuff();
+}
+void release_semaphore(SEMAPHORE * semaphore){
+	lock_stuff();
+	if(semaphore->first_waiting != NULL){
+		//we need to wake up the first task waiting for the semaphore
+		//semaphore->current count remains the same because we're replacing this task with another ^.^
+		thread_control_block *task = semaphore-> first_waiting;
+		semaphore->first_waiting = task->next;
+		unblock_task(task);
+	}else{
+		//no tasks waiting
+		semaphore->current_count --;
+	}
+	unlock_stuff();
+}
+int wait_for_procupdate(uint64_t pid, uint64_t timeout){
+	if(find_task_by_pid(pid) == NULL){
+		return -2; //we're waiting for a task that doesn't exist
+	}
+	lock_stuff();
+	current_task_TCB->pidW = pid;
+	current_task_TCB->next = procwaiting;
+	if(timeout == 0x0){
+		current_task_TCB->ttn = 0x0;
+	}else{
+		current_task_TCB->ttn = TIME + timeout;
+	}
+	procwaiting = current_task_TCB;
+	unlock_stuff();
+	block_task(STATE_WAITING_FOR_PROC_UPDATE);
+	if(current_task_TCB->irq_waiting_for == 0x1){
+		current_task_TCB->irq_waiting_for = 0x0;
+		return -1;
+	}
+	return 0;
+}
+void unblockP(uint64_t pid){
+	thread_control_block * task = procwaiting;
+	thread_control_block * next = NULL;
+	uint64_t K = pid ^ ((uint64_t)1<<63);
+	if(pid & (uint64_t)1<<63){
+		lock_stuff();
+		while(task != NULL){
+			if(task->pidW == K){
+				unblock_task(task);
+			}else{
+				task->next = procwaiting;
+				procwaiting = task;
+			}
+			task = task->next;
+		}
+		unlock_stuff();
+	}
 }
 void PIT_IRQ_handler(){
 	thread_control_block * next_task;
@@ -357,4 +507,13 @@ void PIT_IRQ_handler(){
 	}
 	unlock_stuff(); //after unblocking task it is postponed until HERE, we then call schedule where it errors out
 }
-
+void PROC_EXIT(){
+	//block scheduling
+	lock_scheduler();
+	//remove ourselves from all the lists
+	//free everything in the scheduler instead
+	current_task_TCB->state = STATE_DEAD;
+	//unblock scheduling
+	unlock_scheduler();
+	schedule();
+}

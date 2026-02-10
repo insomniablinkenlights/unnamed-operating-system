@@ -131,3 +131,6 @@ void PIC_PS2(){
 	IRQ_clear_mask(0x1);
 	IRQ_set_mask(12);
 }
+void PIC_PS2off(){
+	IRQ_set_mask(0x1);
+}

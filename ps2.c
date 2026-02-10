@@ -42,10 +42,12 @@ uint8_t PS2_IS_DUAL_CHANNEL = 0;
 uint8_t PS2_SUPPORTED_CHANNELS = 0;
 uint8_t PS2_KB_CHANNEL = 0;
 uint8_t READ_KB_DATA(){
+	PIC_PS2();
 	wait_for_irq(0x1, 0x0, NULL);
 	//TODO: fix wfirq
 	uint8_t j = inb(0x60);
 	PIC_sendEOI(0x1);
+	PIC_PS2off(); //we'll drop some keys, but until we can make a better way this is what we get.
 	return j;
 }
 uint8_t READ_KB_DATA2(){
@@ -185,11 +187,13 @@ uint8_t KeyMap(uint8_t keycode, uint8_t mods){
 	
 }
 uint8_t keyboard_init = 0x0;
+uint8_t keyboard_is_raw = 0x1;
 void PS2_DRIVER(){
 	//to output we'll use WRITE(0, &k, sizeof(KP));
 	uint8_t LsRsLaRaClNlLctRct = 0; //states obviously
 	uint8_t b1 = 0;
 	uint8_t b2 = 0;
+	keyboard_is_raw = 0x1;
 	KP * k = malloc(sizeof(KP)); //static arrays fuck it up -- don't know why it didn't break until now !
 	PS2_INIT();
 	InitKernelFd(); 
@@ -226,7 +230,7 @@ void PS2_DRIVER(){
 				default:
 				       k->ascii = KeyMap(k->keycode, LsRsLaRaClNlLctRct);
 				       k->states = LsRsLaRaClNlLctRct;
-			       	       WRITE(0, k, sizeof(KP));	       
+			       	       if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
 			}
 		}else{
 			k->keycode = (b1|0x80)^0x80; //&0x7F is better
@@ -256,7 +260,8 @@ void PS2_DRIVER(){
 					}
 					k->ascii = KeyMap(k->keycode, LsRsLaRaClNlLctRct);
 					k->states = LsRsLaRaClNlLctRct;
-			       	        WRITE(0, k, sizeof(KP));	       
+			       	        if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
+					else if(k->pR) WRITE(0, &(k->ascii), 1);
 			}
 		}
 	}

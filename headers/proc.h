@@ -14,9 +14,23 @@ typedef struct __attribute__((packed)) thread_control_block {
 	void * timeout_function; //+44
 	void * file_descriptors;// +52
 	void * cr3;//+60
-	void * vaddsp;//+64
-	uint64_t kernelFdLen; //+68
+	void * vaddsp;//+68
+	uint64_t kernelFdLen; //+76
+	uint64_t pid; //+84
+		      //pid's last bit will be set to 1 if we have a task to unblock
+	uint64_t pidW; //+92
 } thread_control_block;
+typedef struct SEMAPHORE{
+	int64_t max_count;
+	int64_t current_count;
+	thread_control_block * first_waiting;
+	thread_control_block * last_waiting;
+}SEMAPHORE;
+void acquire_semaphore(SEMAPHORE * semaphore);
+void release_semaphore(SEMAPHORE * semaphore);
+SEMAPHORE * create_semaphore(int max_count);
 extern thread_control_block * current_task_TCB;
 thread_control_block * create_kernel_task(void startingRIP(void));
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments);
+void PROC_EXIT();
 #endif

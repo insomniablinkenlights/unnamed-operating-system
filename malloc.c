@@ -38,7 +38,7 @@ void * malloc(uint64_t size){
 			}
 			if(mcp[i*2]>=sizebitmask){ //(1<<size)-1 = (size) 1 bits, so we check if the bitmask can fit our malloc
 				m=0; //m = number of bits we've matched
-				for(int j = 0; j<64; j++){
+				for(int j = 0; j<64; j++){ 
 					if(mcp[i*2]&(1<<j)){ //if our bitmask is 1 at location j, we've matched a bit
 						m++;
 						if(m==size){ //we've matched all the bits !!!

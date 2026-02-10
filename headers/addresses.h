@@ -17,6 +17,9 @@ void BREAK(uint64_t data);
 void HLT();
 void PIC_sendEOI(uint8_t irq);
 void PIC_PS2();
+void PIC_PS2off();
+void U_PFREEALL();
+int checkCorruption();
 uint32_t DIV64_32(uint64_t dd, uint32_t ds);
 uint32_t MOD64_32(uint64_t dd, uint32_t ds);
 void outb(uint16_t port, uint8_t data);
@@ -85,6 +88,11 @@ enum ERROR_CODES{
 	ERR_STDIO_NONZ=0x37,
 	ERR_MBASE_TOOHIGH=0x38,
 	ERR_PML4_DNE=0x39,
+	ERR_PL_CLEANUP=0x3a,
+	ERR_DEADCODE=0x3b,
+	ERR_MISP_BINDT=0x3c,
+	ERR_MISP_BINDH=0x3d,
+	ERR_INT=0x3e,
 };
 #define NULL  ((void*)0x0)
 

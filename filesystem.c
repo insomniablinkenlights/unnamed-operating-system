@@ -2,6 +2,7 @@
 #include "headers/addresses.h"
 #include "headers/chs.h"
 #include "headers/proc.h"
+#include "headers/filesystem.h"
 uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
 	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
@@ -32,7 +33,7 @@ void write(uint64_t LBA, uint64_t disk, uint16_t len, void * data){
 		floppy_write(LBA+i, len, (char*)data+512*i, disk);
 	}
 }
-#define LBA_FS_BASE 72
+#define LBA_FS_BASE 108
 //DO NOT leave it at 0.
 //by doing this I have determined that the reason that reading keeps failing IS a problem in the LBA calculations specifically. TODO: test after 18.
 typedef struct __attribute__((packed)) inode {
@@ -45,44 +46,11 @@ typedef struct __attribute__((packed)) inode {
 	char name[32];
 }inode; //filename is at the beginning of file and terminated with \0
   //directories have perm bit 0x8 =1, and are lists of 64-bit inode numbers terminated with 0x0
-void format(){
-	/*
-	char * m = KPALLOC();
-	memfill(m, 0x1000);
-(	(inode*)m)->chunkaddr1=1;
-(	(inode*)m)->chunklen=1;
-(	(inode*)m)->perms=0x8;
-(	(inode*)m)->owner=0x0;
-(	(inode*)m)->group=0x0;
-(	(inode*)m)->timestamp=0x0;
-	m+=sizeof(inode);
-(	(inode*)m)->chunkaddr1=2;
-(	(inode*)m)->chunklen=1;
-(	(inode*)m)->perms=0x0;
-(	(inode*)m)->owner=0x0;
-(	(inode*)m)->group=0x0;
-(	(inode*)m)->timestamp=0x0;
-	memcpy( ((inode*)m)->name, "TXT\0"+CBASE, 4);
-	m-=sizeof(inode);
-	write(LBA_FS_BASE, 0x0, 512, m);
-	memfill(m, 0x1000);
-*(	((uint64_t *) m)) = 0x1;
-*(	((uint64_t *) m)+1 )= 0x0;
-*(	((uint64_t *) m)+2 )= 0xfff; //if the contents are bad, then here we have our problem
-	write(LBA_FS_BASE+1, 0x0, 512, m);
-	memfill(m, 0x1000);
-	memcpy((char*) m, "hello\0"+CBASE, 5); //TODO: double check memcpy works
-	write(LBA_FS_BASE+2, 0x0, 512, m);
-	P_FREE(m);*/
+void format(){ //moved into an external file
 }
 //and now a function that reads the file into a buffer
 //we'll implement IO as streams like in unix
-typedef struct stream{
-	uint64_t (* function)(void *, uint64_t, void *, uint64_t, uint8_t);
-	void * arguments;
-	uint64_t position;
-	uint64_t flags;
-}stream;
+// [MOVED INTO HEADERS/FILESYSTEM.H]
 //which gives you a uint64_t function(void * arguments, uint64_t position, void * buffer, uint64_t len)
 //every process has a fd table, where every fd maps to a stream for reading and/or a stream for writing
 //for now we'll just have ONE FD for every kernel task
@@ -94,7 +62,6 @@ inode * GrabInode(uint64_t id);
 void CloseAllFds(){
 	//unimplemented
 }
-void OpenStdIn();
 void InitKernelFd(){
 	//this obviously does vary per-process
 	if(current_task_TCB == NULL){
@@ -226,19 +193,21 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	}else{
 		//we have an actual stream	
 		while(len > 0x0){
-			if(arguments->pairOut == NULL) return 0; //closed in the middle...
-			if(arguments->bufferOutEnd->datac != 0xFF){
+			if(arguments->bufferOutEnd->datac != 255){
 				if(arguments->bufferOutEnd->block_write){ //shitty mutex, breaks if we check block_read in the read function, it's 0, we move on to read some stuff, before we set block_write we yield to this function, which checks it, sees 0, turns on block_read, does some stuff, halfway in between move back to read function, which turns on block_write and so on.
+					nano_sleep(1000000);
 					continue;
 				}
 				arguments->bufferOutEnd->block_read = 1;
 				toWrite = MIN(255-arguments->bufferOutEnd->datac, len);
-				memcpy(arguments->bufferOutEnd->data+arguments->bufferOutEnd->datac, buffer+WP, toWrite);
+				memcpy((char*)(arguments->bufferOutEnd->data)+arguments->bufferOutEnd->datac,(char*)( buffer)+WP, toWrite);
 				arguments->bufferOutEnd->datac+=toWrite;
 				WP+=toWrite;
 				arguments->bufferOutEnd->block_read = 0;
+				len-=toWrite;
 			}else{ //we need to make the next free bufferOut
 				if(arguments->bufferOutEnd->block_write){ //shitty mutex
+					nano_sleep(1000000);
 					continue;
 				}
 				arguments->bufferOutEnd->block_read = 1;
@@ -247,8 +216,9 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 				arguments->bufferOutEnd->next->datac = toWrite;
 				arguments->bufferOutEnd->next->block_write = 0;
 				arguments->bufferOutEnd->next->block_read = 0;
-				memcpy(arguments->bufferOutEnd->next->data, buffer+WP, toWrite);
+				memcpy(arguments->bufferOutEnd->next->data, (char*)(buffer)+WP, toWrite);
 				WP+=toWrite;
+				len-=toWrite;
 				arguments->bufferOutEnd->block_read = 0;
 				arguments->bufferOutEnd = arguments->bufferOutEnd->next;
 			}
@@ -274,6 +244,7 @@ uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64
 		while(len > 0x0){
 			if(arguments->pairIn == NULL) return 0; //closed in the middle...
 			if(arguments->pairIn->bufferOut->block_read){
+				nano_sleep(100000000);
 				continue;
 			}
 			arguments->pairIn->bufferOut->block_write = 1;
@@ -286,12 +257,15 @@ uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64
 					free(m);
 				}else{
 					arguments->pairIn->bufferOut->block_write = 0;
+					nano_sleep(100000000); //there's nothing in the buffer
 				}
 			}else{
-				memcpy(buffer+bpos, arguments->pairIn->bufferOut->data, toRead);
-				memcpy(arguments->pairIn->bufferOut->data, arguments->pairIn->bufferOut->data+toRead, 0xff-toRead); //I'm not sure if this works :3
+				memcpy((char*)(buffer)+bpos, arguments->pairIn->bufferOut->data, toRead);
+				memcpy(arguments->pairIn->bufferOut->data, (char*)(arguments->pairIn->bufferOut->data)+toRead, 0xff-toRead); //I'm not sure if this works :3
 				arguments->pairIn->bufferOut->datac -= toRead;
 				arguments->pairIn->bufferOut->block_write = 0;
+				len-=toRead;
+				bpos+=toRead;
 			}
 		}
 	}
@@ -303,11 +277,15 @@ uint64_t StdIOStream(void * arguments, uint64_t position, void * buffer, uint64_
 	}else if(rw == 0x1){
 		return STDOUTStream(arguments, position, buffer, len);
 	}else if(rw == 0x2){
-		//we need to signal to the other process that we've closed our buffer...
+		//TODO: we need to signal to the other process that we've closed our buffer...
 		free(arguments);
 		return 0x0;
-	}else if(rw == 0x3){
-		return 0x0;
+	}else if(rw == 0x3){ //ftell on a stdio should return whether that stdio can read IN
+			     //this is a dirty hack and we'd ought to make some kind of file struct
+		if(((stdIO*)arguments)->pairIn != NULL){
+			return 1;
+		}
+		return 0;
 	}else{
 		ERROR(ERR_FILESTREAM_RW, rw);
 		return 0x0;
@@ -319,12 +297,13 @@ void PS2_DRIVER_BIND_STDIO(){
 	free(((stdIO*)(kernelFd[0].arguments)));
 	(kernelFd[0].arguments) = TermSP;
 }
-void OpenStdIn(){
+uint64_t OpenStdIn(){
 	if(!stdinSetup){
 		stdinSetup = 0x1;
 		TermSP = malloc(sizeof(stdIO));
 		memfill(TermSP, sizeof(stdIO));
 		TermSP->bufferOut = malloc(sizeof(stdFIFOBUF));
+		memfill(TermSP->bufferOut, sizeof(stdFIFOBUF)); // clears stuff
 		TermSP->bufferOutEnd = TermSP->bufferOut;
 		TermSP->bufferOut->datac = 0; //TODO: this might have a fencepost
 		TermSP->bufferOut->next = NULL;
@@ -359,6 +338,7 @@ void OpenStdIn(){
 	}
 	memcpy(kernelFd+kernelFdLastClosed, m, sizeof(stream));
 	free(m);
+	return kernelFdLastClosed;
 
 }
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags);
@@ -604,4 +584,25 @@ void start_init_task(){
 }
 uint8_t VERIFY_FLAGS(uint64_t rdx){
 	return rdx&0xff; //does NOT verify shit
+}
+void BIND_T_STDIO(thread_control_block * A, uint64_t FD0, thread_control_block * B, uint64_t FD1){
+	//TODO: check against FDLEN
+	stream * ST1 = ((stream*)(A->file_descriptors))+FD0;
+	stream * ST2 = ((stream*)(B->file_descriptors)) +FD1;
+	if(ST1->function != StdIOStream || ST2->function == StdIOStream){
+		ERROR(ERR_MISP_BINDT, 0);
+	}
+	//bind A's stdout to B's stdin
+	((stdIO*)((ST2->arguments))) ->pairIn = ST1->arguments;
+	((stdIO*)((ST1->arguments))) ->pairOut = ST2->arguments;
+}
+void BIND_HANDLES(uint64_t FD0, uint64_t FD1){
+	//TODO: check against FDLEN
+	if(kernelFd[FD0].function != StdIOStream || kernelFd[FD1].function != StdIOStream){
+		ERROR(ERR_MISP_BINDH, 0);
+	}
+	stdIO * IO1 = (stdIO*)(kernelFd[FD0].arguments);
+	stdIO * IO2 = (stdIO*)(kernelFd[FD0].arguments);
+	IO2->pairIn = IO1;
+	IO1->pairOut = IO2;
 }
