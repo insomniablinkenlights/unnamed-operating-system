@@ -199,6 +199,7 @@ void PS2_DRIVER(){
 	InitKernelFd(); 
 	PS2_DRIVER_BIND_STDIO();
 	KeyMap(0, 0);
+	//BREAK((uint64_t)current_task_TCB); //here 'tis RUNNING
 	keyboard_init=1;
 	while(1){
 		if(PS2_KB_CHANNEL & 0x1){
@@ -209,6 +210,7 @@ void PS2_DRIVER(){
 		else {
 			ERROR(ERR_NOKEYBOARD,0x0);
 		}
+	//	BREAK(0x38);
 		if(b1 == 0xe0){
 			if(PS2_KB_CHANNEL & 0x1){
 				b2 = READ_KB_DATA();

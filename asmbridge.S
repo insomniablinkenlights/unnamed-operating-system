@@ -108,21 +108,30 @@ push %rbp
 
 movabsq $(current_task_TCB), %rax
 mov (%rax), %rbx
+//rbx is a pointer to the current task
 cmp $0x0, %rbx
 //if we're null then we skip
 je ST2
 
+//load rsp into old task
 mov %rsp, (%rbx)
+//load state from old task into cl
 movb 24(%rbx), %cl
-//if state is 0 (running) then we don't care
+//if state is other than 0 (running) then we don't need to replace it onto the list
 cmp $0x0, %cl
 jne ST2
+
 //replace on list if it's still running
+//make it ready
 movb $1, 24(%rbx)
 movabsq $(LAST_THREAD), %rcx
-mov (%rcx), %rdx
-mov %rbx, 16(%rdx)
-mov %rbx, (%rcx)
+movq (%rcx), %rdx
+//last_thread->next = old
+movq %rbx, 16(%rdx)
+//last_thread = old
+movq %rbx, (%rcx)
+//old->next = NULL
+movq $0, 16(%rbx)
 jmp ST3
 ST2:
 //i don't know why this is important...
@@ -130,23 +139,29 @@ ST3:
 //load next state
 //rdi = *next
 mov %rdi, %rsi
+//set rsi to running
 movb $0, 24(%rsi)
 //rax = **tcb
 //replace current task tcb
-mov (%rax), %rbx
+movq (%rax), %rbx
 //rbx = *tcb
-mov %rsi, (%rax)
-mov (%rsi), %rsp
+//replace current_task_TCB
+movq %rsi, (%rax)
+//replace RSP with next's rsp
+movq (%rsi), %rsp
 //get cr3
-mov 60(%rsi), %rcx
-mov 60(%rbx), %rax
+movq 60(%rsi), %rcx
+movq 60(%rbx), %rax
 cmp %rax, %rcx
 je STDONE
 //they have diff' cr3s
 //swap user mem in...
+//rcx is *new, rax is *old
+//rbx is *first
 movabsq $(0x8000030000), %rbx
 movq (%rbx), %rsi
 movq %rsi, (%rax)
+//new to first
 movq (%rcx), %rsi
 movq %rsi, (%rbx)
 STDONE:

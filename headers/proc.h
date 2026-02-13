@@ -26,11 +26,14 @@ typedef struct SEMAPHORE{
 	thread_control_block * first_waiting;
 	thread_control_block * last_waiting;
 }SEMAPHORE;
+void wfPokeT(thread_control_block ** p); //block the task and put it in the poker
+void PokeT(thread_control_block ** p); //unblock the task in the poker
 void acquire_semaphore(SEMAPHORE * semaphore);
 void release_semaphore(SEMAPHORE * semaphore);
 SEMAPHORE * create_semaphore(int max_count);
 extern thread_control_block * current_task_TCB;
 thread_control_block * create_kernel_task(void startingRIP(void));
 thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments);
+void proc_relent();
 void PROC_EXIT();
 #endif

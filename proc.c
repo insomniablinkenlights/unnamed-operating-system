@@ -60,14 +60,15 @@ void lock_stuff(){
 #endif
 }
 enum task_states {
-	STATE_RUNNING,
+	STATE_RUNNING = 0,
 	STATE_READY,
 	STATE_WAITING,
 	STATE_DEAD,
 	STATE_PAUSED,
 	STATE_WAITING_FOR_IRQ,
 	STATE_WAITING_FOR_PROC_UPDATE,
-	STATE_WAITING_FOR_LOCK
+	STATE_WAITING_FOR_LOCK,
+	STATE_WAITING_FOR_POKE
 };
 uint64_t get_time_since_boot(){
 	return TIME;
@@ -138,6 +139,9 @@ void switch_to_task_wrapper(thread_control_block * task){
 	if(current_task_TCB == NULL){
 		time_slice_remaining = 0;
 	}else{
+		if(current_task_TCB->state == STATE_READY){
+			ERROR(ERR_SHOULD_NOT_BE_READY2, (uint64_t)current_task_TCB);
+		}
 		if(current_task_TCB->state == STATE_DEAD){
 			//add to the reaper list
 			current_task_TCB->next = DEAD_TASKS;
@@ -198,6 +202,7 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 void reap(){
 	thread_control_block * task = DEAD_TASKS;
 	while(task != NULL){
+		BREAK((uint64_t)task);
 		//free the stack somehow? doesn't work for the first task though
 		unblockP(task->pid);
 		if(task->file_descriptors) P_FREE(task->file_descriptors);
@@ -208,6 +213,15 @@ void reap(){
 		task = next;
 	}
 	DEAD_TASKS = NULL;
+}
+void schedule();
+void proc_relent(){
+	if(FIRST_THREAD == NULL){ //the other thread IS waiting for an IRQ, but when we receive an IRQ we don't switch to it?
+		BREAK(0x9);
+	}else{
+		BREAK(0x10);
+	}
+	schedule(); //eventually it should like uhh do more
 }
 void schedule(){
 	//what really is a scheduler
@@ -223,16 +237,22 @@ void schedule(){
 //		asm volatile("xchgw %bx, %bx; call FAULT");
 //	}
 	reap();
+	if(current_task_TCB->state == STATE_READY){
+		ERROR(ERR_SHOULD_NOT_BE_READY3, (uint64_t) current_task_TCB);
+	}
 	if(FIRST_THREAD != NULL){
 		task = FIRST_THREAD;
 		FIRST_THREAD=task->next;
 		switch_to_task_wrapper(task);
 	}else if(current_task_TCB->state == STATE_RUNNING){
-	
+		//do nothing, just continue...
 	}
 	else{
 		//when we unblock the task we co-opted, we're screwed...
 		task=current_task_TCB;
+		if(task->state == STATE_READY){
+			ERROR(ERR_SHOULD_NOT_BE_READY, (uint64_t) task); //because we would have been on first thread
+		}
 		current_task_TCB=NULL;
 		time_slice_remaining=0x0;
 	//	uint64_t idle_start_time = get_time_since_boot();
@@ -242,11 +262,18 @@ void schedule(){
 		//	HLT();
 		//	CLI();
 		}while(FIRST_THREAD==NULL);
-		current_task_TCB=task;
+		current_task_TCB=task; //if task is modified then that's not good...
+	//	if(task->state == STATE_READY){
+	//		ERROR(ERR_SHOULD_NOT_BE_READY, (uint64_t) task); //something changed!
+	//	}
 		task = FIRST_THREAD;
 		FIRST_THREAD = task->next;
 		if(task != current_task_TCB){
 			switch_to_task_wrapper(task);
+		}else{
+			current_task_TCB->state = STATE_RUNNING; //this fixes it! ^w^
+								  //this in fact does NOT fix it
+								  //I think we're unblocking it and setting the state to STATE_READY somewhere, and then it's the first and only thread on the list because the other one leaves it?
 		}
 	}
 }
@@ -261,30 +288,35 @@ void unblock_task(thread_control_block * task){
 	lock_scheduler();
 	//switching should be postponed anyway !!!
 	
-
+	if(task->state == STATE_RUNNING){
+		ERROR(ERR_TASK_SHOULD_BE_RUNNING, (uint64_t)task);
+	}
+	if(task->state == STATE_READY){
+		ERROR(ERR_TASK_BADUNBLOCK, (uint64_t)task);
+	}
 	//if task switching is postponed, we try to switch to a task not on the ready list and thus remove it from both lists...
 	task->state=STATE_READY;
 	if(current_task_TCB == NULL){
 		//prevents trying to switch to a task that never had its rsp pushed, we need to return to schedule and let them handle that
-		if(FIRST_THREAD == NULL){
+		if(FIRST_THREAD == NULL){ 
 			LAST_THREAD=task;
-		task->next=NULL;
-		FIRST_THREAD=LAST_THREAD;
-
+			task->next=NULL;
+			FIRST_THREAD=LAST_THREAD;
 		}
 		else{
 			//we are in an idle state but there is a task that needs to be unblocked already... 
-		LAST_THREAD->next=task;
-		LAST_THREAD=task;
+			LAST_THREAD->next=task;
+			LAST_THREAD=task;
 		//	asm volatile("xchgw %bx, %bx; mov $1, %cl");
 		//	FAULT(); //??
 		}
 	}
-	else if(FIRST_THREAD == NULL){
+	else if(FIRST_THREAD == NULL){ //we have a task running but we have an empty ready list, so we put the task on the ready list and then switch to it
 		LAST_THREAD=task;
 		task->next=NULL;
 		FIRST_THREAD=LAST_THREAD;
-		switch_to_task_wrapper(task);
+	//	switch_to_task_wrapper(task); //sets state to running...
+					      //but the problem is... this lets us go back but it doesn't go the other way!
 	}else{
 		LAST_THREAD->next=task;
 		LAST_THREAD=task;
@@ -296,7 +328,7 @@ void nano_sleep_until(uint64_t t){
 	lock_stuff();
 	if(t<get_time_since_boot()){
 	//	asm volatile("xchgw %bx, %bx");
-		unlock_scheduler();
+		unlock_stuff();
 		return;
 	}
 	current_task_TCB->ttn=t;
@@ -335,15 +367,20 @@ void unblockirq(uint8_t irq){
 	lock_stuff();
 	next_task = irqwaiting;
 	irqwaiting = NULL;
+	uint8_t haveweunblocked = 0;
 	while(next_task != NULL){
-	this_task = next_task;
-	next_task = this_task->next;
-	if(this_task -> irq_waiting_for == irq){
-		unblock_task(this_task);
-	}else{
-		this_task->next = irqwaiting;
-		irqwaiting= this_task;
+		this_task = next_task;
+		next_task = this_task->next;
+		if(this_task -> irq_waiting_for == irq){
+			unblock_task(this_task);
+			haveweunblocked=1;
+		}else{
+			this_task->next = irqwaiting;
+			irqwaiting= this_task;
+		}
 	}
+	if(!haveweunblocked){
+		ERROR(ERR_HAVENT_UNBLOCKED, irq);
 	}
 	unlock_stuff();
 }
@@ -419,6 +456,32 @@ void release_semaphore(SEMAPHORE * semaphore){
 	}
 	unlock_stuff();
 }
+void wfPokeT(thread_control_block ** p){ //lock_stuff() locks both task switching and irqs; lock_scheduler locks only task switching
+	lock_stuff();
+	if(!p || *p){
+		ERROR(ERR_POKE_NULLP, (uint64_t)p);
+	}
+	*p = current_task_TCB;
+	unlock_stuff();
+	block_task(STATE_WAITING_FOR_POKE); //now all of our tasks are blocked and none are sleeping. the fucker decides to fuck shit up bc of ts
+}
+void PokeT(thread_control_block **p){
+	lock_stuff();
+	if(!p){
+		ERROR(ERR_POKE_NULLP, (uint64_t)p);
+	}
+//	BREAK((uint64_t)FIRST_THREAD);
+//	BREAK((uint64_t)current_task_TCB);
+	if(*p != NULL){
+		unblock_task(*p);
+		*p = NULL;
+	}else{
+		BREAK((uint64_t)p);
+	}
+//	BREAK((uint64_t)FIRST_THREAD);
+//	BREAK((uint64_t)current_task_TCB);
+	unlock_stuff();
+}
 int wait_for_procupdate(uint64_t pid, uint64_t timeout){
 	if(find_task_by_pid(pid) == NULL){
 		return -2; //we're waiting for a task that doesn't exist
@@ -472,7 +535,7 @@ void PIT_IRQ_handler(){
 		if(this_task == next_task){
 			ERROR(ERR_TT_NT, 0x0);
 		}
-		if( this_task -> state == STATE_WAITING_FOR_IRQ){
+		if( this_task -> state != STATE_WAITING){
 			ERROR(ERR_PIT_WFI_MISP, (uint64_t)this_task);
 		}
 		if( this_task -> ttn <= TIME){

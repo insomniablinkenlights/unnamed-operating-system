@@ -156,8 +156,6 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
 typedef struct __attribute__((packed)) stdFIFOBUF{
 	uint64_t data[32];
 	uint8_t datac; //with this we can access 256 bytes, so 8*32 quads
-	uint8_t block_read;
-	uint8_t block_write;
 	struct stdFIFOBUF* next;
 }stdFIFOBUF;
 typedef struct stdIO{
@@ -166,6 +164,8 @@ typedef struct stdIO{
 	stdFIFOBUF * bufferOut; //if we write multiple bytes in
 	stdFIFOBUF * bufferOutEnd; //does not go above 0x1000
 	uint64_t type;	
+	SEMAPHORE * bufferSema;
+	thread_control_block ** waiter;
 }stdIO;
 /*to write to this, grab the pair, check if type == terminal or whatever, check that sizeof buffer is less than bcount, if so write shit, otherwise block until we can*/
 /*to read from this, if bcount > 0 read everything, if we still need to read then block until we can, otherwise block*/
@@ -175,98 +175,80 @@ stdIO * stdInBindings = NULL;
 uint8_t stdinSetup = 0;
 stdIO * TermSP = NULL;
 uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){
-	//going to assume that any stdout is directly to the terminal for now; later on the arguments will have pipes and shit
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
 	if(pairOut == TermSP){
-		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific
+		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific. Later on this will have to be reworked to interface with abstract drivers.
 		write_to_screen(buffer, len);
-	//	while(len > 0x0){ //the ONLY time when we use the pair's output as its input
-		/*	toWrite = ((0x1000-pairOut->bcount)<len)?(0x1000-pairOut->bcount):(len);
-			memcpy((char*)(pairOut->bufferOut)+pairOut->bcount, buffer, toWrite);
-			len-=toWrite;
-			pairOut->bcount+=toWrite;*/
-	//		write_to_screen(pairOut->bufferOut,pairOut-> bcount); //TODO: write_to_screen needs to behave more like a unix terminal
-		//	pairOut->bcount=0;
-	//	}
 	}else{
 		//we have an actual stream	
 		while(len > 0x0){
-			if(arguments->bufferOutEnd->datac != 255){
-				if(arguments->bufferOutEnd->block_write){ //shitty mutex, breaks if we check block_read in the read function, it's 0, we move on to read some stuff, before we set block_write we yield to this function, which checks it, sees 0, turns on block_read, does some stuff, halfway in between move back to read function, which turns on block_write and so on.
-					nano_sleep(1000000);
-					continue;
-				}
-				arguments->bufferOutEnd->block_read = 1;
+			acquire_semaphore(arguments->bufferSema); //on interrupt, we get here, get to the end of all this, but never get back to the reader!
+			if(arguments->bufferOutEnd->datac != 255){ //we can write into the end
 				toWrite = MIN(255-arguments->bufferOutEnd->datac, len);
 				memcpy((char*)(arguments->bufferOutEnd->data)+arguments->bufferOutEnd->datac,(char*)( buffer)+WP, toWrite);
 				arguments->bufferOutEnd->datac+=toWrite;
 				WP+=toWrite;
-				arguments->bufferOutEnd->block_read = 0;
 				len-=toWrite;
 			}else{ //we need to make the next free bufferOut
-				if(arguments->bufferOutEnd->block_write){ //shitty mutex
-					nano_sleep(1000000);
-					continue;
-				}
-				arguments->bufferOutEnd->block_read = 1;
 				toWrite = MIN(255, len);
 				arguments->bufferOutEnd->next = malloc(sizeof(stdFIFOBUF));
 				arguments->bufferOutEnd->next->datac = toWrite;
-				arguments->bufferOutEnd->next->block_write = 0;
-				arguments->bufferOutEnd->next->block_read = 0;
 				memcpy(arguments->bufferOutEnd->next->data, (char*)(buffer)+WP, toWrite);
 				WP+=toWrite;
 				len-=toWrite;
-				arguments->bufferOutEnd->block_read = 0;
 				arguments->bufferOutEnd = arguments->bufferOutEnd->next;
 			}
-		/*	toWrite = ((0x1000-arguments->bcount)<len)?(0x1000-arguments->bcount):(len);
-			if(toWrite == 0x0) continue; //TODO: block for IO
-			memcpy((char*)(arguments->bufferOut)+arguments->bcount, buffer, toWrite);
-			len-=toWrite;
-			arguments->bcount+=toWrite;*/
+			release_semaphore(arguments->bufferSema); //this is a super tight loop, chances are we don't switch
+			PokeT((arguments->waiter)); //we go there, we clear the waiter, we return, we come back (?)
+		//	BREAK(0x842); //we never come back here -- we enter userspace, we go back to the read function, etc... this function is STILL in PokeT's unlock_stuff(), because it schedules right back. By the time we get to the scheduler, I have no idea what the states will be. Ideally we would poke the task after going back to waiting for an irq?
+				      //current_task_TCB->state == STATE_READY??
 		}
 	}
 	return 0;
 }
 #include "headers/ps2.h"
-uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){ //TODO: my implementation is backwards! it's first in last out; needs to be FIFO!
+uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){ //FIFO
 	//position is unused
 	stdIO * pairIn = arguments -> pairIn;
 	int toRead = 0;
 	int bpos = 0;
+	int toRelent = 0;
 	if(pairIn == NULL){ //closed stdin
 		memfill(buffer, len);
 		return 0; //fail silently	
 	}else{
 		while(len > 0x0){
 			if(arguments->pairIn == NULL) return 0; //closed in the middle...
-			if(arguments->pairIn->bufferOut->block_read){
-				nano_sleep(100000000);
-				continue;
-			}
-			arguments->pairIn->bufferOut->block_write = 1;
+			if(toRelent){
+			//	nano_sleep(0x10000000); //using nano_sleep works, but waiting for a signal from the other process does not.
+			//	BREAK(0x942);
+			       	wfPokeT(arguments->pairIn->waiter); 
+			}//this doesn't work after one use... on the second time we call this (the second read from userspace) should check the task list... it's probably waiting for irq
+					//nano_sleep(0x10000000); //Using relent doesn't work here because the other process is probably blocked waiting for IO. Need to instead make a 'signal' structure and include it in the STDIO struct, to be sent whenever new data is written.
+			toRelent = 0;
+			acquire_semaphore(arguments->pairIn->bufferSema);
 			//read from the first buffer, if it has no data and isn't the last one then free and move
 			toRead = MIN(arguments->pairIn->bufferOut->datac, len);
 			if(toRead == 0){
-				if(arguments->pairIn->bufferOut != arguments->pairIn->bufferOutEnd){
+				if(arguments->pairIn->bufferOut != arguments->pairIn->bufferOutEnd){ //len isn't 0 obviously... take the first buffer (empty), get rid of it
 					stdFIFOBUF * m = arguments->pairIn->bufferOut;
 					arguments->pairIn->bufferOut = m->next;
 					free(m);
-				}else{
-					arguments->pairIn->bufferOut->block_write = 0;
-					nano_sleep(100000000); //there's nothing in the buffer
-				}
+				}else{ //we're completely out of buffers
+					//what we were doing previously was sleeping here, but I think it'd be better to switch manually. To do that I'll need signals or MPI; semaphores can't do shit here.
+					toRelent = 1;
+
+				} //TODO: wait until there's actually something IN the buffer
 			}else{
 				memcpy((char*)(buffer)+bpos, arguments->pairIn->bufferOut->data, toRead);
 				memcpy(arguments->pairIn->bufferOut->data, (char*)(arguments->pairIn->bufferOut->data)+toRead, 0xff-toRead); //I'm not sure if this works :3
 				arguments->pairIn->bufferOut->datac -= toRead;
-				arguments->pairIn->bufferOut->block_write = 0;
 				len-=toRead;
 				bpos+=toRead;
 			}
+			release_semaphore(arguments->pairIn->bufferSema); //the problem is that we want to return control to the writer here, but instead it's very likely that we'll catch fire here. I need a form of IPC that can signal on write! 
 		}
 	}
 	return 0;
@@ -307,6 +289,9 @@ uint64_t OpenStdIn(){
 		TermSP->bufferOutEnd = TermSP->bufferOut;
 		TermSP->bufferOut->datac = 0; //TODO: this might have a fencepost
 		TermSP->bufferOut->next = NULL;
+		TermSP->bufferSema = create_semaphore(1); //can only be read or write
+		TermSP->waiter = malloc(sizeof(thread_control_block*));
+		*(TermSP->waiter) = NULL;
 		//bind TermSP to PS2_DRIVER? Will need to do this in some kinda exec()?
 	}
 	stream * m = malloc(sizeof(stream));
@@ -318,7 +303,10 @@ uint64_t OpenStdIn(){
 	((stdIO*)(m->arguments)) -> bufferOutEnd= ((stdIO*)(m->arguments))->bufferOut;
 	((stdIO*)(m->arguments)) -> bufferOut->datac=0;
 	((stdIO*)(m->arguments)) -> bufferOut->next=NULL;
+	((stdIO*)(m->arguments)) -> bufferSema = create_semaphore(1);
 	((stdIO*)(m->arguments)) -> type= 0; //normal process
+	((stdIO*)(m->arguments)) -> waiter = malloc(sizeof(thread_control_block*));
+	*((((stdIO*)m->arguments))->waiter) = NULL;
 	m->position = 0x0;
 	m->flags = 0x0;
 	if(kernelFd[0].function != NULL){
