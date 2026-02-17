@@ -8,13 +8,13 @@ uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
 	if(disk != 0x0){
 		ERROR(ERR_READ_DISKINV, disk);
 	}
-	if(len&511 || len>0x1000){
+	if(len&511){
 		ERROR(ERR_READ_SIZE, len);
 	}
-	void * m = KPALLOC();
+	void * m = KPALLOCS((len>>12) + 1);
 	void * m1;
 	for(uint32_t i = 0; i<DIV64_32(len, 512); i++){
-		m1 = floppy_read(LBA+i, len, disk);
+		m1 = floppy_read(LBA+i, 512, disk);
 		memcpy((char*)m+512*i, m1, 512);
 		P_FREE(m1);
 	}
@@ -26,7 +26,7 @@ void write(uint64_t LBA, uint64_t disk, uint16_t len, void * data){
 	if(disk != 0x0){
 		ERROR(ERR_WRITE_DISKINV, disk);
 	}
-	if(len&511 || len>0x1000){
+	if(len&511){
 		ERROR(ERR_WRITE_SIZE, len);
 	}
 	for(uint32_t i = 0; i<DIV64_32(len, 512); i++){
@@ -35,7 +35,6 @@ void write(uint64_t LBA, uint64_t disk, uint16_t len, void * data){
 }
 #define LBA_FS_BASE 108
 //DO NOT leave it at 0.
-//by doing this I have determined that the reason that reading keeps failing IS a problem in the LBA calculations specifically. TODO: test after 18.
 typedef struct __attribute__((packed)) inode {
 	uint64_t chunkaddr1; //chunksize 4kb
 	uint64_t chunklen;
@@ -80,15 +79,15 @@ void InitKernelFd(){
 //the streams (for the case of files) map to ids of inodes
 //so to read or write takes a fd which grabs the correct function from the table
 //and open uses openfilename and pushes it
-//TODO: and for output?
 //TODO: rework kpalloc to have  second version which gives you continuous memory slabs
-//TODO: KPFREE
 inode * GrabInode(uint64_t id){
 	int r = sizeof(inode);
 	int k2 = id;
 	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 512); //TODO: drive numbers
+								    //this reads the nth block
 										      //I THINK that read is failing to do the memcpy maybe
 	inode * addr = (inode*)(((char*)m)+r*k2); //TERRIBLE hack. WHY does imulq not work?
+						  //TODO: this breaks past 512!!!
 	if((void*)addr == m && id != 0){
 		//id != 0, sizeof != 0, id*sizeof = 0. ????
 		ERROR(ERR_INODE_NE, k2*r);
@@ -112,9 +111,9 @@ void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
 /*	if(len>0x200){
 		ERROR(ERR_READ_SIZE_TEMP, len);
 	}*/
-	void * m = read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, 512); //TODO: drive numbers
+	void * m = read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, len); //TODO: drive numbers
 	memcpy(buffer, m, len);
-	P_FREE(m);
+	P_FREES(m, (len>>12) + 1);
 }
 uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	//arguments[0] = inode #
@@ -222,11 +221,8 @@ uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64
 		while(len > 0x0){
 			if(arguments->pairIn == NULL) return 0; //closed in the middle...
 			if(toRelent){
-			//	nano_sleep(0x10000000); //using nano_sleep works, but waiting for a signal from the other process does not.
-			//	BREAK(0x942);
 			       	wfPokeT(arguments->pairIn->waiter); 
-			}//this doesn't work after one use... on the second time we call this (the second read from userspace) should check the task list... it's probably waiting for irq
-					//nano_sleep(0x10000000); //Using relent doesn't work here because the other process is probably blocked waiting for IO. Need to instead make a 'signal' structure and include it in the STDIO struct, to be sent whenever new data is written.
+			}
 			toRelent = 0;
 			acquire_semaphore(arguments->pairIn->bufferSema);
 			//read from the first buffer, if it has no data and isn't the last one then free and move
@@ -236,11 +232,9 @@ uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64
 					stdFIFOBUF * m = arguments->pairIn->bufferOut;
 					arguments->pairIn->bufferOut = m->next;
 					free(m);
-				}else{ //we're completely out of buffers
-					//what we were doing previously was sleeping here, but I think it'd be better to switch manually. To do that I'll need signals or MPI; semaphores can't do shit here.
+				}else{ 
 					toRelent = 1;
-
-				} //TODO: wait until there's actually something IN the buffer
+				} 
 			}else{
 				memcpy((char*)(buffer)+bpos, arguments->pairIn->bufferOut->data, toRead);
 				memcpy(arguments->pairIn->bufferOut->data, (char*)(arguments->pairIn->bufferOut->data)+toRead, 0xff-toRead); //I'm not sure if this works :3
@@ -559,7 +553,7 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 void start_init_task(){
 	create_kernel_task(PS2_DRIVER);
 	while(keyboard_init == 0x0){
-		nano_sleep(0x1000000);
+		nano_sleep(0x1000000); //TODO: poke
 	}
 //	while(1){ //just let the driver do its stuff
 //		nano_sleep(0x1000000);

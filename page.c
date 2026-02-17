@@ -49,6 +49,7 @@ uint64_t construct_virtual_address(uint64_t pml4, uint64_t pdpt, uint64_t pde, u
 uint8_t PA_CALLING = 0x0;
 void * UP_ALLOC3(uint8_t FLAGS);
 void * KP_ALLOC3();
+void * KP_ALLOC4(int64_t size_pages);
 void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 	// 0x16000 contains a stack of 64 bit page virtual addresses
 	uint64_t k = 0x0;
@@ -74,8 +75,13 @@ void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 	}
 	return (void*)k;
 }
-void * UPALLOC(uint8_t FLAGS){ 
-	return UP_ALLOC3(FLAGS);
+void * KPALLOCS(int64_t size){
+	return KP_ALLOC4(size);
+}
+void * UP_ALLOC4(uint8_t flags, void * initial, int64_t size_pages);
+void * UPALLOC(uint8_t FLAGS, void * initial, int64_t size_pages){ 
+	return UP_ALLOC4(FLAGS, initial, size_pages);
+	//return UP_ALLOC3(FLAGS);
 }
 void * PL_MAP_START = (void*)(MBASE+0x15000);
 void * LL_NV(uint64_t index, void * PLM){ //we want to return the index'th quad in a linked list PLM
@@ -243,6 +249,82 @@ void * UP_ALLOC3(uint8_t FLAGS){ //TODO: doesn't work
 	ERROR(ERR_PAGE_ALLOC_SHOULDNOTEXIST,0x0);
 	return (void*)0x0;
 }
+void ALSP(void * v_add, uint8_t flags, uint8_t magic1, uint8_t magic2){
+	uint64_t pt = (((uint64_t)v_add)&0x1FF000)>>12;
+	uint64_t pde = (((uint64_t)v_add)&(0x200*0x1ff000))>>(12+9);
+	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
+	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))>>(12+9*3);
+	uint64_t * M;
+	uint64_t ad = PL_FN(); //here is our PHYSICAL address
+	PL_SV(ad, 0x1);
+	if((get_pml4V(pml4)&0x1) == 0x0){
+		M = KPALLOC();
+		memfill(M, 0x1000);
+		((uint64_t*)(MBASE+0x10000))[pml4] = (V2P(M))|magic1;
+		FLUSH_TLB();
+	}
+	if((get_pdptV(pml4, pdpt)&0x1)==0x0){
+		M = KPALLOC();
+		memfill(M, 0x1000);
+		get_pml4VP(pml4)[pdpt] = (V2P(M))|magic1;
+		FLUSH_TLB();
+	}
+	if((get_pdeV(pml4,  pdpt, pde)&0x1)==0x0){
+		M = KPALLOC(); 
+		memfill(M, 0x1000);
+		get_pdptVP(pml4, pdpt)[pde] = (V2P(M))|magic1;
+		FLUSH_TLB();
+	}
+	if((get_ptV(pml4, pdpt, pde, pt) & 0x1)!=0){
+		ERROR(ERR_PT_EXISTS_ALREADY, (uint64_t) v_add);
+	}
+	get_pdeVP(pml4,pdpt,pde)[pt] = (0x1000*ad)|magic2|flags;
+	FLUSH_TLB();
+
+}
+void * UP_ALLOC4(uint8_t flags, void * initial, int64_t size_pages){
+	if(size_pages == 0) ERROR(ERR_AL_NOP, size_pages);
+	if((uint64_t)(initial)+0x1000*size_pages > CBASE || (uint64_t)initial&0xfff){
+		ERROR(ERR_UPA_BIN, (uint64_t) initial);
+	}
+	for(int i = 0; i<size_pages; i++){
+		ALSP((char*)initial+0x1000*i, flags, 0x7, 0x5);
+		//allocate specifically initial+0x1000*i
+	}
+	return initial;
+}
+uint8_t doesPDEEExist(void * v_add){
+	uint64_t pt = (((uint64_t)v_add)&0x1FF000)>>12;
+	uint64_t pde = (((uint64_t)v_add)&(0x200*0x1ff000))>>(12+9);
+	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
+	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))>>(12+9*3);
+	if(get_pml4V(pml4)&0x1 && get_pdptV(pml4, pdpt)&0x1 && get_pdeV(pml4, pdpt, pde)&0x1 && !(get_ptV(pml4, pdpt, pde, pt)&0x1)){
+		return 1;
+	}return 0;
+}
+void * KP_ALLOC4(int64_t size_pages){
+	if(size_pages == 0) ERROR(ERR_AL_NOP, size_pages);
+	//find an area which is entirely unused
+	//TODO: loads really early in boot so we can't put a lock or mutex on this, but we probably need to
+	//way slower than our normal implementation in KP_ALLOC3 so we'll only use this if size_pages == 1
+	if(size_pages == 1){
+		return KPALLOC();
+	}
+	char * ini =(char*) MBASE;
+	int64_t s = 0;
+	while(s != size_pages){
+		if(doesPDEEExist(ini+0x1000*s)){
+			s++;
+		}else{
+			ini=ini+0x1000*s;
+			s=0;
+		}
+	}
+	for(s = 0; s<size_pages; s++){
+		ALSP(ini+0x1000*s, 0x0, 0x1, 0x1);
+	}
+	return ini;
+}
 void * KP_ALLOC3(){
 	PA_CALLING = 0x1;
 	uint64_t ad = PL_FN(); //here is our PHYSICAL address
@@ -357,6 +439,14 @@ void P_FREE(void * v_add){
 	}*/
 
 	FLUSH_TLB();
+}
+void P_FREES(void*v_add, int64_t l){
+	if(l < 1){
+		ERROR(ERR_AL_NOP, l);
+	}
+	for(int i = 0; i<l; i++){
+		P_FREE(((char*)v_add) +(i<<12));
+	}
 }
 void * VERIFY_USER(void * rdx){
 	if((uint64_t)(rdx) > CBASE){

@@ -1,6 +1,7 @@
 #include "stdint.h"
 #ifndef proc
 #define proc
+struct __attribute__((packed)) TCB_CH;
 typedef struct __attribute__((packed)) thread_control_block {
 	void * rsp; //+0
 	void * rsp0; //+8
@@ -19,7 +20,13 @@ typedef struct __attribute__((packed)) thread_control_block {
 	uint64_t pid; //+84
 		      //pid's last bit will be set to 1 if we have a task to unblock
 	uint64_t pidW; //+92
+	struct thread_control_block * parent;
+	struct TCB_CH * children;
 } thread_control_block;
+typedef struct __attribute__((packed)) TCB_CH{
+	struct TCB_CH * next;
+	thread_control_block * ch;
+}TCB_CH;
 typedef struct SEMAPHORE{
 	int64_t max_count;
 	int64_t current_count;

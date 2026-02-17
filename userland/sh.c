@@ -18,12 +18,10 @@ int main(){
 		for(i = 0; buf[i] != '\n'; i++){}
 		buf[i] = 0;
 		proc * k = exec(buf, NULL); //todo arguments
-		//pass through k's stdout to our stdout
-		bind(0, k, 2 | 8); //1: our stdin, 2: our stdout, 4: k's stdin, 8: k's stdout, 16: new (on our side)
-		bind(0, k, 1 | 4); //our stdin to k's stdin
-		//once we have the process we can pass IO
-		while(k->exists)
-			wait(k, 0); //wait () will just return -1 instead of having a timeout_function
-		//i think our stdio should be automatically unbound now
+		bind(stdin, k->stdin);
+		bind(stdout, k->stdout);
+		wait(); //suspend execution until one of our children terminates
+			//TODO: a concept of child processes
+			//after the process terminates it should return stdin and stdout to its parent
 	}
 }

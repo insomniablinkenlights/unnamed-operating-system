@@ -38,6 +38,8 @@ uint64_t CPU_idle_time = 0;
 void schedule();
 void switch_to_task(thread_control_block* next_thread);
 void unblockP(uint64_t pid);
+void block_task(uint8_t reason);
+void unblock_task(thread_control_block * task);
 void lock_scheduler(){
 	#ifndef SMP
 	CLI();
@@ -68,7 +70,8 @@ enum task_states {
 	STATE_WAITING_FOR_IRQ,
 	STATE_WAITING_FOR_PROC_UPDATE,
 	STATE_WAITING_FOR_LOCK,
-	STATE_WAITING_FOR_POKE
+	STATE_WAITING_FOR_POKE,
+	STATE_WAITING_FOR_DEATH
 };
 uint64_t get_time_since_boot(){
 	return TIME;
@@ -126,6 +129,8 @@ void initialize_multitasking(){
 	memfill(current_task_TCB->cr3, 0x1000); //yeah this is fucked up
 	current_task_TCB->vaddsp = NULL;
 	current_task_TCB->kernelFdLen = 0x0;
+	current_task_TCB->parent = NULL;
+	current_task_TCB->children = NULL;
 	FIRST_THREAD=NULL;
 	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
@@ -159,6 +164,41 @@ void switch_to_task_wrapper(thread_control_block * task){
 	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }
+void waitForChildToDie(){
+	block_task(STATE_WAITING_FOR_DEATH); //if we have no children this will break our mind
+}
+void appendChild(thread_control_block * A, thread_control_block * B){
+	TCB_CH * k = A->children;
+	A->children = malloc(sizeof(TCB_CH));
+	A->children->next = k;
+	A->children->ch = B;
+	if(B->parent == NULL){
+		B->parent = A;
+	}
+}
+void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Used when the daughter has died.
+	thread_control_block * single_mother_of_3 = missing_eight_year_old_white_girl->parent;
+	TCB_CH * victims = single_mother_of_3->children;
+	TCB_CH * prev = NULL;
+	while(victims != NULL && victims->ch != missing_eight_year_old_white_girl){
+		prev = victims;
+		victims = victims->next;
+	}
+	if(victims == NULL){
+		//The girl claims a parent which has disowned her!
+		ERROR(ERR_AMBER_ALERT, (uint64_t)missing_eight_year_old_white_girl);
+	}
+	if(prev == NULL){
+		single_mother_of_3->children = victims->next;
+	}else{
+		prev->next = victims->next;
+	}
+	//Alert the mother that her daughter has died.
+	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH){ //Psychopathic mother.
+	}else{
+		unblock_task(single_mother_of_3);
+	}
+}
 thread_control_block * create_kernel_task(void startingRIP(void)){
 	//deprecating it
 	return ckprocA((void (*) (void *))startingRIP, NULL);
@@ -186,6 +226,9 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->kernelFdLen=0x0;
 	M->pid = next_PID++;
 	M->pidW = 0;
+	M->children = NULL;
+	M->parent = NULL;
+	appendChild(current_task_TCB, M);
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!
 	if(FIRST_THREAD != NULL){
@@ -204,7 +247,7 @@ void reap(){
 	while(task != NULL){
 		BREAK((uint64_t)task);
 		//free the stack somehow? doesn't work for the first task though
-		unblockP(task->pid);
+		if(task->parent) murderChild(task);
 		if(task->file_descriptors) P_FREE(task->file_descriptors);
 		if(task->cr3) P_FREE(task->cr3);
 		//vaddsp is unused

@@ -1,3 +1,4 @@
+#include "stdint.h"
 #ifndef addresses
 #define addresses
 #define page_directory_address = 0x10000;
@@ -5,13 +6,15 @@
 #define MBASE (CBASE+0x20000)
 #define MIN(a,b) (((a)<(b))?(a):(b))
 void * KPALLOC();
-void * UPALLOC(uint8_t FLAGS);
+void * KPALLOCS(int64_t size);
+void * UPALLOC(uint8_t FLAGS, void * initial, int64_t size_pages);
 void FAULT();
 void * malloc(uint64_t size);
 void free(void * ptr);
 void initMalloc();
 void CLI();
 void P_FREE(void * v_add);
+void P_FREES(void * v_add, int64_t l);
 void STI();
 void BREAK(uint64_t data);
 void HLT();
@@ -100,6 +103,10 @@ enum ERROR_CODES{
 	ERR_HAVENT_UNBLOCKED=0x43,
 	ERR_SHOULD_NOT_BE_READY3=0x44,
 	ERR_TASK_BADUNBLOCK=0x45,
+	ERR_AMBER_ALERT=0x46,
+	ERR_PT_EXISTS_ALREADY = 0x47,
+	ERR_UPA_BIN=0x48,
+	ERR_AL_NOP=0x49,
 };
 #define NULL  ((void*)0x0)
 
