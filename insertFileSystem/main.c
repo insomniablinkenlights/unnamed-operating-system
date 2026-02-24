@@ -28,12 +28,20 @@ void write(void * m, uint64_t LBA){
 	fseek(f, LBA*0x200, SEEK_SET);
 	fwrite(m, 0x1, 0x200, f);
 }
+int get_fl(char * a){
+	FILE * m = f2o(a, "r");
+	fseek(m, 0, SEEK_END);
+	int b = ftell(m);
+	fclose(m);
+	return b;
+}
 void fuckstuffup(){
 	//TODO: dirent
 	char * m = calloc(0x200, 0x1);
 	inode * k = ((inode*)m);
 	k[0] = constructInode(1, 1, 8, 0, 0, 0, "");
 	k[1] = constructInode(2, 1, 8, 0, 0, 0, "sbin");
+	printf("INIT LENGTH IS %i\n", get_fl("./init.bin"));
 	k[2] = constructInode(3, 1, 0x1, 0x0, 0x0, 0x0, "init");
 	k[3] = constructInode(4, 1, 0x1, 0x0, 0x0, 0x0, "sh");
 	k[4] = constructInode(5, 2, 0x1, 0x0, 0x0, 0x0, "txt");

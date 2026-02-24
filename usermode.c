@@ -2,6 +2,7 @@
 #include "headers/addresses.h"
 #include "headers/proc.h"
 #include "headers/filesystem.h"
+#include "headers/flat.h"
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
 void ASMS_UM(void * n);
@@ -64,17 +65,25 @@ void ExecN(void * arguments){
 	//old process still has a pointer to all our arguments and shit so it can't free and exit until we're done with them
 	//TODO: mutexes/ semaphores/ at least SOME kinda synchronisation
 	struct ExecArgsInternal * A = arguments;
-	acquire_semaphore(A->sema);
+	InitKernelFd();
+//	acquire_semaphore(A->sema);
+//	BREAK((uint64_t)(A->File));
 	uint64_t AF = OPEN(A->File, 0x0); //TODO: open it with r/x
 	SEEK(AF, 0, 2);
 	uint64_t AFL = TELL(AF);
 	SEEK(AF, 0, 0);
-	UPALLOC(0x2, (void*)0x0, AFL);
-	READ(AF, 0x0, AFL*0x200);
+	BREAK(AFL);
+	void * MEM = KPALLOCS(DIV64_32(AFL,0x200));
+	READ(AF, MEM, AFL);
+	void * INI = PF(MEM, AFL);
+	P_FREES(MEM, DIV64_32(AFL, 0x200));
+//	UPALLOC(0x2, (void*)0x0, AFL);
+//	READ(AF, 0x0, AFL*0x200);
 	//TODO argc and argv and shit or whatever
 	CLOSE(AF);
-	release_semaphore(A->sema);
-	switchToUserModeProc(0x0);
+//	release_semaphore(A->sema);
+	A->done = 1;
+	switchToUserModeProc(INI);
 }
 uint64_t ExecFile(char * A, int argc, char ** argv){
 	thread_control_block * new = NULL;
@@ -86,12 +95,13 @@ uint64_t ExecFile(char * A, int argc, char ** argv){
 	newArgs->done = 0;
 	new = ckprocA(ExecN, newArgs);
 	while(1){ //this loops until execn grabs the sema
-		acquire_semaphore(newArgs->sema);
+	//	acquire_semaphore(newArgs->sema);
 		if(newArgs->done == 1){
-			release_semaphore(newArgs->sema);
+	//		release_semaphore(newArgs->sema);
 			break;
 		}
-		release_semaphore(newArgs->sema);
+	//	release_semaphore(newArgs->sema);
+		nano_sleep(0x10000000);
 	}
 	return new->pid;
 }

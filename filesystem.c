@@ -54,7 +54,7 @@ void format(){ //moved into an external file
 //every process has a fd table, where every fd maps to a stream for reading and/or a stream for writing
 //for now we'll just have ONE FD for every kernel task
 #define kernelFd ((stream*)(current_task_TCB->file_descriptors))
-#define kernelFdLen current_task_TCB->kernelFdLen
+#define kernelFdLen (current_task_TCB->kernelFdLen)
 inode * root = NULL;
 uint64_t kernelFdLastClosed = 0x0;
 inode * GrabInode(uint64_t id);
@@ -559,7 +559,10 @@ void start_init_task(){
 //		nano_sleep(0x1000000);
 //	}
 	InitKernelFd();
-	run_EXE("/sbin/init\0"+CBASE);
+	ExecFile("/sbin/init\0"+CBASE, 0, NULL);
+	waitForChildToDie();
+	ERROR(ERR_DEADCODE,1);
+	//run_EXE("/sbin/init\0"+CBASE);
 /*	uint64_t id = OPEN("/TXT\0"+CBASE, 0x0); //for some reason this gives us root instead of txt
 	READ(id, UPALLOC(0x0), 0x200); //current segfault: attempting to read into user territory
 	asm volatile("xchgw %bx, %bx; xchgw %bx, %bx");	*/

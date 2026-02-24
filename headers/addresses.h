@@ -5,6 +5,7 @@
 #define CBASE 0x8000000000
 #define MBASE (CBASE+0x20000)
 #define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 void * KPALLOC();
 void * KPALLOCS(int64_t size);
 void * UPALLOC(uint8_t FLAGS, void * initial, int64_t size_pages);
@@ -107,6 +108,13 @@ enum ERROR_CODES{
 	ERR_PT_EXISTS_ALREADY = 0x47,
 	ERR_UPA_BIN=0x48,
 	ERR_AL_NOP=0x49,
+	ERR_ELF_MAGIC=0x4a,
+	ERR_SYMI_OOR=0x4b,
+	ERR_UNDEF_EXTSYM=0x4c,
+	ERR_RLC_FAIL=0x4d,
+	ERR_RLC_UNSP=0x4e,
+	ERR_ELF_UNSUP=0x4f,
+	ERR_FLAT_INV=0x50,
 };
 #define NULL  ((void*)0x0)
 

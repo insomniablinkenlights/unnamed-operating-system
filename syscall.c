@@ -32,14 +32,15 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			rV = 0x0;
 			break;
 		case 0x5: //extend memory, should always return the next seg
-			rV = (uint64_t)UPALLOC(0x2, VERIFY_USER((void*)rsi), rdx);
+			//rV = (uint64_t)UPALLOC(0x2, VERIFY_USER((void*)rsi), rdx);
+			rV = -1;
 			break;
 		case 0x6: //tell
 			rV = TELL(rsi);
 			break;
 		case 0x7: //exec
 			//for this, arguments need to be added to cktask?
-			rV = ExecFile(VERIFY_USER((void*)rsi), VERIFY_USER((void*)rdx)); //TODO: verify file
+			rV = ExecFile(VERIFY_USER((void*)rsi), rdx, VERIFY_USER((void*)rcx)); //TODO: verify file
 			break;
 		case 0x8: //bind
 			BIND_HANDLES(rsi, rdx);

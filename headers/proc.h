@@ -43,4 +43,5 @@ thread_control_block * create_kernel_task(void startingRIP(void));
 thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments);
 void proc_relent();
 void PROC_EXIT();
+void waitForChildToDie();
 #endif
