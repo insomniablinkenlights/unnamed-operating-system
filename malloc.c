@@ -38,7 +38,7 @@ void * malloc(uint64_t size){
 			}
 			if(mcp[i*2]>=sizebitmask){ //(1<<size)-1 = (size) 1 bits, so we check if the bitmask can fit our malloc
 				m=0; //m = number of bits we've matched
-				for(int j = 0; j<64; j++){
+				for(int j = 0; j<64; j++){ 
 					if(mcp[i*2]&(1<<j)){ //if our bitmask is 1 at location j, we've matched a bit
 						m++;
 						if(m==size){ //we've matched all the bits !!!
@@ -112,9 +112,6 @@ void free(void * ptr){
 	uint64_t resizebitmask = ((1<<size)-1);
 	uint64_t resizebitmaskjshift = resizebitmask <<(j-size+1); //imagine size=3, j=5, 0b111000
 	if((*bitmaskptr & resizebitmaskjshift)){ //malloc is returning a region within the free?
-		BREAK(j);
-		BREAK(size);
-		BREAK(resizebitmaskjshift);
 		ERROR(ERR_FREE_BADMETADATA, *bitmaskptr & resizebitmaskjshift);
 	}
 	*bitmaskptr ^= resizebitmaskjshift;

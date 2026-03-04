@@ -1,20 +1,29 @@
+#include "stdint.h"
 #ifndef addresses
 #define addresses
 #define page_directory_address = 0x10000;
 #define CBASE 0x8000000000
-#define MBASE CBASE+0x10000
+#define MBASE (CBASE+0x20000)
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 void * KPALLOC();
-void * UPALLOC(uint8_t FLAGS);
+void * KPALLOCS(int64_t size);
+void * UPALLOC(uint8_t FLAGS, void * initial, int64_t size_pages);
 void FAULT();
 void * malloc(uint64_t size);
 void free(void * ptr);
 void initMalloc();
 void CLI();
 void P_FREE(void * v_add);
+void P_FREES(void * v_add, int64_t l);
 void STI();
 void BREAK(uint64_t data);
 void HLT();
 void PIC_sendEOI(uint8_t irq);
+void PIC_PS2();
+void PIC_PS2off();
+void U_PFREEALL();
+int checkCorruption();
 uint32_t DIV64_32(uint64_t dd, uint32_t ds);
 uint32_t MOD64_32(uint64_t dd, uint32_t ds);
 void outb(uint16_t port, uint8_t data);
@@ -78,6 +87,37 @@ enum ERROR_CODES{
 	ERR_TFNTTNNZ = 0x32,
 	ERR_SPLIT_FAIL = 0x33,
 	ERR_OPEN_TWO=0x34,
+	ERR_NOKEYBOARD=0x35,
+	ERR_KC_OOR=0x36,
+	ERR_STDIO_NONZ=0x37,
+	ERR_MBASE_TOOHIGH=0x38,
+	ERR_PML4_DNE=0x39,
+	ERR_PL_CLEANUP=0x3a,
+	ERR_DEADCODE=0x3b,
+	ERR_MISP_BINDT=0x3c,
+	ERR_MISP_BINDH=0x3d,
+	ERR_INT=0x3e,
+	ERR_POKE_NULLP=0x3f,
+	ERR_TASK_SHOULD_BE_RUNNING=0x40,
+	ERR_SHOULD_NOT_BE_READY=0x41,
+	ERR_SHOULD_NOT_BE_READY2=0x42,
+	ERR_HAVENT_UNBLOCKED=0x43,
+	ERR_SHOULD_NOT_BE_READY3=0x44,
+	ERR_TASK_BADUNBLOCK=0x45,
+	ERR_AMBER_ALERT=0x46,
+	ERR_PT_EXISTS_ALREADY = 0x47,
+	ERR_UPA_BIN=0x48,
+	ERR_AL_NOP=0x49,
+	ERR_ELF_MAGIC=0x4a,
+	ERR_SYMI_OOR=0x4b,
+	ERR_UNDEF_EXTSYM=0x4c,
+	ERR_RLC_FAIL=0x4d,
+	ERR_RLC_UNSP=0x4e,
+	ERR_ELF_UNSUP=0x4f,
+	ERR_FLAT_INV=0x50,
+	ERR_BINFMT_BROKEN=0x51,
+	ERR_TODO_SBRK=0x52,
+	ERR_PAGE_FAULT=0x53,
 };
 #define NULL  ((void*)0x0)
 

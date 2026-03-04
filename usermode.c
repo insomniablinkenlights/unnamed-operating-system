@@ -2,11 +2,13 @@
 #include "headers/addresses.h"
 #include "headers/proc.h"
 #include "headers/filesystem.h"
+#include "headers/flat.h"
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
 void ASMS_UM(void * n);
 uint64_t get_rspplus1(uint64_t k);
 void loadRSP0(uint64_t rsp){
+	current_task_TCB->rsp0 = (uint64_t*)rsp; //TODO: this will need to be reloaded whenever we sproc
 	char * tomodify = (char*)(&tss64)+0x04+CBASE;
 	*(((uint64_t*)tomodify)) = rsp; //not a typo, we don't want to load rsp0 into rsp0. Fuck x86.
 	//LTR(0x28);
@@ -17,13 +19,18 @@ void switchToUserModeProc(void* UP){
 	//pagetables already loaded at UP
 	//user process at UP
 	//if two of these get called at the same time, this will break. the obvious solution is to disable the scheduler, but then how do we re-enable it?
+	current_task_TCB->PL = 0x3; //write down that we're in usermode
 	if((uint64_t)UP>CBASE){
 		ERROR(ERR_NOT_UM, (uint64_t)UP);
 	}
 	//after this we need to initialise fds, initialise memory, initialise rsp0, intitialise registers, sysexit	
-	CloseAllFds(); //TODO: taskwise FD switching !!!
+	
 	//let's actually initialise the memory in P_FREE instead
-	loadRSP0(get_rspplus1(040)); //huh.
+	//new RSP0 should be unrelated to our rsp0; we never leave the user process
+	//so every interrupt makes a new rsp0 if it doesn't cli -- mainly 0x80 as the culprit
+	//and it frees that rsp0 after it's done
+	loadRSP0(((uint64_t)KPALLOC())+0xff8); //we'll need to clean this up, TODO: memory leak
+				     //we need to reload rsp0 every time i think
 	ASMS_UM(UP);
 	//TODO: page faults :3
 	//by which I mean that we need to dynamically allocate user memory as it's needed
@@ -31,10 +38,72 @@ void switchToUserModeProc(void* UP){
 }
 void run_EXE(char * name){
 	//TODO: tasks need to switch between virtual address spaces
-	void * initialM = UPALLOC(0x2);
+	void * initialM = UPALLOC(0x2, (void*)0x0, 0x1);
+	//BREAK(0x4892);
 	uint64_t id = OPEN(name, 0x0); 
-	BREAK(id);
 	READ(id, initialM, 0x200); //TODO: actually read the ENTIRE thing
 	CLOSE(id);
+	//we SHOULD have no more FDs -- TODO: make proc create KernelFd
 	switchToUserModeProc(initialM);
+}
+void UM_CLEANUP(){
+	if(current_task_TCB->PL != 0x3){
+		ERROR(ERR_PL_CLEANUP, current_task_TCB->PL);
+	}
+	//clean up our UM pages, TODO: refactor when we do shared memory
+	U_PFREEALL();
+	PROC_EXIT();
+}
+struct __attribute__((packed)) ExecArgsInternal {
+	char * File;
+	char ** arguments;
+	int argc;
+	SEMAPHORE * sema;
+	int done;
+};
+#include "headers/brk.h"
+void ExecN(void * arguments){
+	//old process still has a pointer to all our arguments and shit so it can't free and exit until we're done with them
+	//TODO: mutexes/ semaphores/ at least SOME kinda synchronisation
+	struct ExecArgsInternal * A = arguments;
+	InitKernelFd();
+current_task_TCB->brk= (uint64_t)malloc(sizeof(prog_mem));
+//	acquire_semaphore(A->sema);
+//	BREAK((uint64_t)(A->File));
+	uint64_t AF = OPEN(A->File, 0x0); //TODO: open it with r/x
+	SEEK(AF, 0, 2);
+	uint64_t AFL = TELL(AF);
+	SEEK(AF, 0, 0);
+	//BREAK(AFL);
+	void * MEM = KPALLOCS(DIV64_32(AFL,0x200));
+	READ(AF, MEM, AFL);
+	void * INI = PF(MEM, AFL);
+	P_FREES(MEM, DIV64_32(AFL, 0x200));
+//	UPALLOC(0x2, (void*)0x0, AFL);
+//	READ(AF, 0x0, AFL*0x200);
+	//TODO argc and argv and shit or whatever
+	CLOSE(AF);
+//	release_semaphore(A->sema);
+	A->done = 1;
+	switchToUserModeProc(INI);
+}
+uint64_t ExecFile(char * A, int argc, char ** argv){
+	thread_control_block * new = NULL;
+	struct ExecArgsInternal * newArgs = malloc(sizeof(struct ExecArgsInternal));
+	newArgs->File = A;
+	newArgs -> arguments = argv;
+	newArgs->argc = argc;
+	newArgs->sema = create_semaphore(1); 
+	newArgs->done = 0;
+	new = ckprocA(ExecN, newArgs);
+	while(1){ //this loops until execn grabs the sema
+	//	acquire_semaphore(newArgs->sema);
+		if(newArgs->done == 1){
+	//		release_semaphore(newArgs->sema);
+			break;
+		}
+	//	release_semaphore(newArgs->sema);
+		nano_sleep(0x10000000);
+	}
+	return new->pid;
 }

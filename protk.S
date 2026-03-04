@@ -10,7 +10,7 @@
 .byte (\gate & 0xf) | (\dpl&0x3)<<5 | 128
 .word \offset2
 .endm
-.equ PML4T_A, 0x20000
+.equ PML4T_A, 0x30000
 
 .macro gdte limit, base, byte, flags
 .word \limit&0xFFFF
@@ -170,7 +170,7 @@ gdte 0xFFFFF, 0x0, 0xF2, 0xC
 .global tss64
 tss64:
 .space 0x4, 0x0
-.quad 0x8000030000
+.quad 0x8000040000
 .space (0x64-0x0c)+2, 0x0
 .word 104
 

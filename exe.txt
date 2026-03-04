@@ -1,0 +1,7 @@
+executable formatting
+(finally!)
+to do ELF we'll need to be able to allocate SPECIFIC virtual pages in SPECIFIC sizes
+this will be in both user and kernel memory
+for user memory we can do specific address and size, for kernel memory we can only do specific size
+umem done!
+
