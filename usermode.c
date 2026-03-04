@@ -61,18 +61,20 @@ struct __attribute__((packed)) ExecArgsInternal {
 	SEMAPHORE * sema;
 	int done;
 };
+#include "headers/brk.h"
 void ExecN(void * arguments){
 	//old process still has a pointer to all our arguments and shit so it can't free and exit until we're done with them
 	//TODO: mutexes/ semaphores/ at least SOME kinda synchronisation
 	struct ExecArgsInternal * A = arguments;
 	InitKernelFd();
+current_task_TCB->brk= (uint64_t)malloc(sizeof(prog_mem));
 //	acquire_semaphore(A->sema);
 //	BREAK((uint64_t)(A->File));
 	uint64_t AF = OPEN(A->File, 0x0); //TODO: open it with r/x
 	SEEK(AF, 0, 2);
 	uint64_t AFL = TELL(AF);
 	SEEK(AF, 0, 0);
-	BREAK(AFL);
+	//BREAK(AFL);
 	void * MEM = KPALLOCS(DIV64_32(AFL,0x200));
 	READ(AF, MEM, AFL);
 	void * INI = PF(MEM, AFL);

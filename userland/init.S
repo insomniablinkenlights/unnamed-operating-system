@@ -15,7 +15,7 @@ mov $0, %rdi
 mov $0, %rsi
 movq a, %rdx
 add $a, %rdx
-add $1, %rdx
+add $8, %rdx
 mov $0x1, %rcx
 int $0x80
 
@@ -23,7 +23,7 @@ mov $1, %rdi
 mov $0, %rsi
 movq a, %rdx
 add $a, %rdx
-add $1, %rdx
+add $8, %rdx
 mov $0x1, %rcx
 int $0x80
 addq $1, a
@@ -33,4 +33,4 @@ jmp L2
 open_sr:
 	.string "# "
 a:
-	.byte 0x0
+	.quad 0x0

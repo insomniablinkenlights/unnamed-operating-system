@@ -3,6 +3,7 @@
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
 #include "headers/proc.h"
+#include "headers/brk.h"
 uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //interrupts are disabled
 	uint64_t rV = 0;
 	CLI();
@@ -31,9 +32,34 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			SEEK(rsi, rdx, rcx);
 			rV = 0x0;
 			break;
-		case 0x5: //extend memory, should always return the next seg
-			//rV = (uint64_t)UPALLOC(0x2, VERIFY_USER((void*)rsi), rdx);
-			rV = -1;
+		case 0x5:  //sbrk(increment = rsi)
+			prog_mem * k = ((prog_mem*)(current_task_TCB->brk));
+			if(k==NULL){
+				ERROR(ERR_BINFMT_BROKEN, (uint64_t)k);
+			}
+			if(rsi & 0xfff){
+				if(k->end & 0xfff){
+					if(((k->end&0xfff)+rsi)<0x1000){
+						k->end += rsi;
+					}else{ //i don't wanna support this shit
+						ERROR(ERR_TODO_SBRK, rsi);
+					}
+					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
+					k->end += rsi;
+				}else{
+					UPALLOC(0x2, (char*)(k->end), (rsi>>12)+1);
+					k->end+=rsi;
+				}
+			}else{
+				if(k->end & 0xfff){
+					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
+					k->end += rsi;
+				}else{
+					UPALLOC(0x2,(char*)( k->end), rsi>>12);
+					k->end += rsi;
+				}	
+			}
+			rV = k->end;
 			break;
 		case 0x6: //tell
 			rV = TELL(rsi);

@@ -263,7 +263,9 @@ void PS2_DRIVER(){
 					k->ascii = KeyMap(k->keycode, LsRsLaRaClNlLctRct);
 					k->states = LsRsLaRaClNlLctRct;
 			       	        if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
-					else if(k->pR) WRITE(0, &(k->ascii), 1);
+					else if(k->pR){
+						 WRITE(0, &(k->ascii), 1);
+					}
 			}
 		}
 	}

@@ -131,6 +131,7 @@ void initialize_multitasking(){
 	current_task_TCB->kernelFdLen = 0x0;
 	current_task_TCB->parent = NULL;
 	current_task_TCB->children = NULL;
+current_task_TCB->brk = 0x0;
 	FIRST_THREAD=NULL;
 	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
@@ -228,6 +229,7 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->pidW = 0;
 	M->children = NULL;
 	M->parent = NULL;
+	M->brk = 0;
 	appendChild(current_task_TCB, M);
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!

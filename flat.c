@@ -1,6 +1,8 @@
 #include "headers/stdint.h"
 #include "headers/addresses.h"
 #include "headers/flat.h"
+#include "headers/proc.h"
+#include "headers/brk.h"
 //flat binary format
 void alseg(uint64_t VADD, uint64_t END, uint64_t START, char* fi){
 	uint64_t text_off = VADD&0xFFF;
@@ -17,12 +19,14 @@ void alseg(uint64_t VADD, uint64_t END, uint64_t START, char* fi){
 	}
 	UPALLOC(2, (void*)(VADD^text_off), text_size_pages);
 	memcpy((void*)(VADD), ((char*)fi)+START, text_size);
+	((prog_mem*)(current_task_TCB->brk))->start = MIN(VADD, (((prog_mem*)(current_task_TCB->brk))->start));
+	((prog_mem*)(current_task_TCB->brk))->end = MAX(VADD+END-START, (((prog_mem*)(current_task_TCB->brk))->end));
 }
 void * PF(void * fi, uint64_t filesize){
 	//fi is in kernel memory
 	PFH * M = (PFH*)fi;
 	//check everything
-	BREAK(0x2472);
+//	BREAK(0x2472);
 	uint8_t TEXT_EXISTS = 0;
 	uint8_t DATA_EXISTS = 0;
 	uint8_t BSS_EXISTS = 0;

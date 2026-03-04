@@ -22,6 +22,7 @@ typedef struct __attribute__((packed)) thread_control_block {
 	uint64_t pidW; //+92
 	struct thread_control_block * parent;
 	struct TCB_CH * children;
+	uint64_t brk; //a pointer to a usermem struct!
 } thread_control_block;
 typedef struct __attribute__((packed)) TCB_CH{
 	struct TCB_CH * next;
