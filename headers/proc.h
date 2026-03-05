@@ -45,4 +45,6 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 void proc_relent();
 void PROC_EXIT();
 void waitForChildToDie();
+thread_control_block * find_task_by_pid(uint64_t pid);
+void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor);
 #endif

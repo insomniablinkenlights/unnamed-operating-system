@@ -587,7 +587,24 @@ void BIND_HANDLES(uint64_t FD0, uint64_t FD1){
 		ERROR(ERR_MISP_BINDH, 0);
 	}
 	stdIO * IO1 = (stdIO*)(kernelFd[FD0].arguments);
-	stdIO * IO2 = (stdIO*)(kernelFd[FD0].arguments);
+	stdIO * IO2 = (stdIO*)(kernelFd[FD1].arguments);
 	IO2->pairIn = IO1;
 	IO1->pairOut = IO2;
+}
+void BINDR(thread_control_block * b){ //POSIX hates this one simple trick!
+	//literally set b's stdio to be our stdio and delete our stdio
+	//TODO: multithreading-incompatible!
+	*(stdIO*)(((stream*)(b->file_descriptors))[0].arguments) = *(stdIO*)kernelFd[0].arguments;
+	((stdIO*)kernelFd[0].arguments)->pairIn->pairOut=(stdIO*)(((stream*)(b->file_descriptors))[0].arguments);
+	if(((stdIO*)kernelFd[0].arguments)->pairOut!=(stdIO*)TermSP)
+		((stdIO*)kernelFd[0].arguments)->pairOut->pairIn=(stdIO*)(((stream*)(b->file_descriptors))[0].arguments);
+	kernelFd[0].arguments = NULL;
+	kernelFd[0].function = NULL;
+	//this should do it
+}
+void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor){
+	if(((stream*)recipient->file_descriptors)[0].function != StdIOStream){ //we lost a stdio somewhere in there
+		((stream*)recipient->file_descriptors)[0] = ((stream*)donor->file_descriptors)[0]; //dirty hack!
+		memfill(((stream*)donor->file_descriptors), sizeof(stream));
+	}
 }

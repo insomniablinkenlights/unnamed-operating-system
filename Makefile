@@ -1,4 +1,5 @@
 CFLAGS=-static -fno-pic -fplt -m64 -mcmodel=large -Wall -Wextra -Wpedantic -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow -mno-red-zone -mgeneral-regs-only -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm -fno-builtin -ffreestanding
+CC=x86_64-elf-gcc
 MAKEFLAGS += -j2
 floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/init.bin build/sysroot/sh.bin
 	dd if="/dev/zero" of=floppya.img bs=1KiB count=1440
@@ -13,39 +14,37 @@ build/%.o: build/%.s
 	as $< -o $@
 
 build/chs.s: chs.c headers/stdint.h
-	gcc $(CFLAGS) chs.c -S -o build/chs.s 
+	$(CC) $(CFLAGS) chs.c -S -o build/chs.s 
 build/page.s: page.c headers/stdint.h headers/addresses.h
-	gcc $(CFLAGS) page.c -S -o build/page.s 
+	$(CC) $(CFLAGS) page.c -S -o build/page.s 
 build/malloc.s: malloc.c headers/stdint.h headers/addresses.h
-	gcc $(CFLAGS) malloc.c -S -o build/malloc.s 
+	$(CC) $(CFLAGS) malloc.c -S -o build/malloc.s 
 build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h
-	gcc $(CFLAGS) proc.c -S -o build/proc.s -Wno-pointer-arith
+	$(CC) $(CFLAGS) proc.c -S -o build/proc.s -Wno-pointer-arith
 build/idt.s: idt.c headers/stdint.h headers/idt.h
-	gcc $(CFLAGS) idt.c -S -o build/idt.s 
+	$(CC) $(CFLAGS) idt.c -S -o build/idt.s 
 build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/chs.h
-	gcc $(CFLAGS) filesystem.c -S -o build/filesystem.s
+	$(CC) $(CFLAGS) filesystem.c -S -o build/filesystem.s
 build/string.s: string.c headers/string.h
-	gcc $(CFLAGS) string.c -S -o build/string.s
+	$(CC) $(CFLAGS) string.c -S -o build/string.s
 build/syscall.s: syscall.c headers/addresses.h headers/filesystem.h
-	gcc $(CFLAGS) syscall.c -S -o build/syscall.s
+	$(CC) $(CFLAGS) syscall.c -S -o build/syscall.s
 build/usermode.s: usermode.c headers/stdint.h headers/addresses.h headers/proc.h headers/filesystem.h headers/flat.h
-	gcc $(CFLAGS) usermode.c -S -o build/usermode.s
+	$(CC) $(CFLAGS) usermode.c -S -o build/usermode.s
 build/flat.s: flat.c headers/flat.h headers/stdint.h headers/addresses.h
-	gcc $(CFLAGS) flat.c -S -o build/flat.s
+	$(CC) $(CFLAGS) flat.c -S -o build/flat.s
 build/terminal.s: terminal.c headers/addresses.h headers/stdint.h 
-	gcc $(CFLAGS) terminal.c -S -o build/terminal.s
+	$(CC) $(CFLAGS) terminal.c -S -o build/terminal.s
 build/ps2.s: ps2.c headers/ps2.h headers/stdint.h headers/addresses.h headers/filesystem.h
-	gcc $(CFLAGS) ps2.c -S -o build/ps2.s
+	$(CC) $(CFLAGS) ps2.c -S -o build/ps2.s
 build/pf.s: pf.c headers/stdint.h headers/addresses.h headers/proc.h headers/brk.h
-	gcc $(CFLAGS) pf.c -S -o build/pf.s
+	$(CC) $(CFLAGS) pf.c -S -o build/pf.s
 build/sysroot/init.bin: build/init.o
 	pushd build && ld -T ../userland/init.ld && mv ./init.bin ./sysroot/sbin/init && popd
 build/sysroot/sh.bin: build/sh.o
 	pushd build && ld -T ../userland/sh.ld && mv ./sh.bin ./sysroot/sbin/sh && popd
 build/%.o: userland/%.S
 	as $< -o $@
-
-
 build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h
 	gcc -Wall -Wextra -Wpedantic -Werror -O0 insertFileSystem/main.c -o build/insertFileSystem.out
 clean:

@@ -78,6 +78,15 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			ERROR(ERR_DEADCODE, 0);
 			rV = -1; //should NOT get to this statement!
 			break;
+		case 0xa:
+			//wait
+			waitForChildToDie();
+			rV = 0;
+			break;
+		case 0xb:
+			BINDR(find_task_by_pid(rsi));
+			rV = 0;
+			break;
 		default:
 			ERROR(ERR_INT, rdi);
 			rV = -1;

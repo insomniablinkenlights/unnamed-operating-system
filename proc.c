@@ -194,6 +194,8 @@ void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Us
 	}else{
 		prev->next = victims->next;
 	}
+	//If the mother is illiterate, we can give her a pencil found on the body of her daughter:
+	giveSTDIOback(single_mother_of_3, missing_eight_year_old_white_girl);
 	//Alert the mother that her daughter has died.
 	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH){ //Psychopathic mother.
 	}else{
@@ -455,6 +457,7 @@ thread_control_block * find_task_by_pid(uint64_t pid){ //doesn't work for tasks 
 		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
 		task = task->next;
 	}
+	ERROR(ERR_PID_NOT_FOUND, pid);
 	return NULL;
 }
 /*this might end up useless
