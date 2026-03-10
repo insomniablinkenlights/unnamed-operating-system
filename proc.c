@@ -64,9 +64,9 @@ void lock_stuff(){
 enum task_states {
 	STATE_RUNNING = 0,
 	STATE_READY,
-	STATE_WAITING,
-	STATE_DEAD,
-	STATE_PAUSED,
+	STATE_WAITING = 2,
+	STATE_DEAD = 3,
+	STATE_PAUSED = 4,
 	STATE_WAITING_FOR_IRQ,
 	STATE_WAITING_FOR_PROC_UPDATE,
 	STATE_WAITING_FOR_LOCK,
@@ -131,12 +131,13 @@ void initialize_multitasking(){
 	current_task_TCB->kernelFdLen = 0x0;
 	current_task_TCB->parent = NULL;
 	current_task_TCB->children = NULL;
-current_task_TCB->brk = 0x0;
+current_task_TCB->brk = NULL;
 	FIRST_THREAD=NULL;
 	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
+void FLUSH_TLB();
 void switch_to_task_wrapper(thread_control_block * task){
 	if(postpone_task_switches_counter != 0){
 		task_switches_postponed_flag = 1;
@@ -162,6 +163,7 @@ void switch_to_task_wrapper(thread_control_block * task){
 	update_time_used();
 	//free dead task's stuff IN stt
 	//switch fd?
+	FLUSH_TLB();
 	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }
@@ -231,7 +233,7 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->pidW = 0;
 	M->children = NULL;
 	M->parent = NULL;
-	M->brk = 0;
+	M->brk = NULL;
 	appendChild(current_task_TCB, M);
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!
@@ -627,4 +629,22 @@ void PROC_EXIT(){
 	//unblock scheduling
 	unlock_scheduler();
 	schedule();
+}
+void unblock_child(uint64_t m){
+	TCB_CH * w = current_task_TCB->children;
+	while(w != NULL){
+		if(w->ch->pid == m)
+			unblock_task(w->ch);
+		w=w->next;
+	}
+}
+thread_control_block * find_child_by_pid(uint64_t m){
+	TCB_CH * w = current_task_TCB->children;
+	while(w != NULL){
+		if(w->ch->pid == m)
+			return w->ch;
+		w=w->next;
+	}
+	ERROR(ERR_FCPID, m);
+	return NULL;
 }

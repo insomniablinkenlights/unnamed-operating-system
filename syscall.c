@@ -37,17 +37,18 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			if(k==NULL){
 				ERROR(ERR_BINFMT_BROKEN, (uint64_t)k);
 			}
-			if(rsi & 0xfff){
+			k->end += rsi; //we'll always trigger a pagefault but now we can handle those !!
+			/*if(rsi & 0xfff){
 				if(k->end & 0xfff){
-					if(((k->end&0xfff)+rsi)<0x1000){
+					if(((k->end&0xfff)+rsi)<0x1000){ 
 						k->end += rsi;
 					}else{ //i don't wanna support this shit
 						ERROR(ERR_TODO_SBRK, rsi);
 					}
-					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
+					//UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), (rsi>>12)+1); //imagine rsi<0x1000?
 					k->end += rsi;
 				}else{
-					UPALLOC(0x2, (char*)(k->end), (rsi>>12)+1);
+					//UPALLOC(0x2, (char*)(k->end), (rsi>>12)+1);
 					k->end+=rsi;
 				}
 			}else{
@@ -58,7 +59,7 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 					UPALLOC(0x2,(char*)( k->end), rsi>>12);
 					k->end += rsi;
 				}	
-			}
+			}*/
 			rV = k->end;
 			break;
 		case 0x6: //tell
@@ -84,7 +85,12 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			rV = 0;
 			break;
 		case 0xb:
-			BINDR(find_task_by_pid(rsi));
+			BINDR(find_child_by_pid(rsi));
+			rV = 0;
+			break;
+		case 0xc: //signal child
+			//rsi == pid of c
+			unblock_child(rsi);
 			rV = 0;
 			break;
 		default:

@@ -1,7 +1,7 @@
 CFLAGS=-static -fno-pic -fplt -m64 -mcmodel=large -Wall -Wextra -Wpedantic -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow -mno-red-zone -mgeneral-regs-only -nostdlib -fno-asynchronous-unwind-tables -fno-dwarf2-cfi-asm -fno-builtin -ffreestanding
 CC=x86_64-elf-gcc
 MAKEFLAGS += -j2
-floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/init.bin build/sysroot/sh.bin
+floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/sbin/init build/sysroot/sbin/sh
 	dd if="/dev/zero" of=floppya.img bs=1KiB count=1440
 	dd if="build/Kernel.bin" of=floppya.img conv=notrunc
 	chmod +x build/insertFileSystem.out
@@ -39,10 +39,12 @@ build/ps2.s: ps2.c headers/ps2.h headers/stdint.h headers/addresses.h headers/fi
 	$(CC) $(CFLAGS) ps2.c -S -o build/ps2.s
 build/pf.s: pf.c headers/stdint.h headers/addresses.h headers/proc.h headers/brk.h
 	$(CC) $(CFLAGS) pf.c -S -o build/pf.s
-build/sysroot/init.bin: build/init.o
+build/sysroot/sbin/init: build/init.o userland/init.ld
 	pushd build && ld -T ../userland/init.ld && mv ./init.bin ./sysroot/sbin/init && popd
-build/sysroot/sh.bin: build/sh.o
+build/sysroot/sbin/sh: build/sh.o build/crt0.o build/int.o userland/sh.ld
 	pushd build && ld -T ../userland/sh.ld && mv ./sh.bin ./sysroot/sbin/sh && popd
+build/sh.s: userland/sh.c
+	$(CC) userland/sh.c -S -o build/sh.s -ffreestanding
 build/%.o: userland/%.S
 	as $< -o $@
 build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h

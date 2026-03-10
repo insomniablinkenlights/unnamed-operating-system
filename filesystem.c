@@ -177,6 +177,7 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
+	BREAK((uint64_t)pairOut);
 	if(pairOut == TermSP){
 		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific. Later on this will have to be reworked to interface with abstract drivers.
 		write_to_screen(buffer, len);
@@ -550,7 +551,7 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	return k2;
 }
 #include "headers/usermode.h"
-void start_init_task(){
+void start_init_task(){ //why the fuck is it in here
 	create_kernel_task(PS2_DRIVER);
 	while(keyboard_init == 0x0){
 		nano_sleep(0x1000000); //TODO: poke
@@ -559,7 +560,8 @@ void start_init_task(){
 //		nano_sleep(0x1000000);
 //	}
 	InitKernelFd();
-	ExecFile("/sbin/init\0"+CBASE, 0, NULL);
+	int m = ExecFile("/sbin/init\0"+CBASE, 0, NULL);
+	unblock_child(m);
 	waitForChildToDie();
 	ERROR(ERR_DEADCODE,1);
 	//run_EXE("/sbin/init\0"+CBASE);

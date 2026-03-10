@@ -442,7 +442,7 @@ void P_FREE(void * v_add){
 }
 void P_FREES(void*v_add, int64_t l){
 	if(l < 1){
-		ERROR(ERR_AL_NOP, l);
+		ERROR(ERR_AL_NOP_FREE, l);
 	}
 	for(int i = 0; i<l; i++){
 		P_FREE(((char*)v_add) +(i<<12));

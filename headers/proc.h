@@ -1,4 +1,5 @@
 #include "stdint.h"
+#include "brk.h"
 #ifndef proc
 #define proc
 struct __attribute__((packed)) TCB_CH;
@@ -22,7 +23,7 @@ typedef struct __attribute__((packed)) thread_control_block {
 	uint64_t pidW; //+92
 	struct thread_control_block * parent;
 	struct TCB_CH * children;
-	uint64_t brk; //a pointer to a usermem struct!
+	prog_mem * brk; //a pointer to a usermem struct!
 } thread_control_block;
 typedef struct __attribute__((packed)) TCB_CH{
 	struct TCB_CH * next;
@@ -47,4 +48,8 @@ void PROC_EXIT();
 void waitForChildToDie();
 thread_control_block * find_task_by_pid(uint64_t pid);
 void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor);
+void unblock_task(thread_control_block * task);
+void block_task(uint8_t reason);
+void unblock_child(uint64_t m);
+thread_control_block * find_child_by_pid(uint64_t m);
 #endif

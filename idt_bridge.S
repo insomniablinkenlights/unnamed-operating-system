@@ -53,8 +53,9 @@ IDT_PF:
 //pop %rbx
 //call FAULT
 //pushes an error code which we need to somehow get rid of before the return
+//stack: error code
 push %rsi
-mov -8(%rsp), %rsi
+mov 8(%rsp), %rsi
 push %rax
 push %rcx
 push %rdx
@@ -74,7 +75,7 @@ pop %rdx
 pop %rcx
 pop %rax
 pop %rsi
-sub $8, %rsp
+add $8, %rsp
 iretq
 
 .global FL

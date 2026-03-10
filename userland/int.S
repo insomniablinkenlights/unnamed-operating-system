@@ -1,0 +1,6 @@
+.code64
+.text
+.globl INT0x80
+INT0x80:
+int $0x80
+ret

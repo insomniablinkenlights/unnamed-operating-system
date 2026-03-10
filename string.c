@@ -8,6 +8,11 @@ int strcmp(char * a, char * b){
 	}
 	return a[i]-b[i];
 }
+int strlen(char * a){
+	int i = 0;
+	for(;a[i];i++);
+	return i;
+}
 int checkCorruption(){
 	return 0xb339b009;
 }

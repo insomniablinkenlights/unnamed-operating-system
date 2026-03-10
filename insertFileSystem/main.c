@@ -38,6 +38,9 @@ int get_fl(const char * a){
 	fseek(m, 0, SEEK_END);
 	int b = ftell(m);
 	fclose(m);
+#ifdef IFS_DBG
+	printf("%s len is %i\n", a, b);
+#endif
 	return b;
 }
 typedef struct dirORfile{
@@ -147,21 +150,29 @@ int getdiskregion(int size){
 	return FIRST_UNU-size;
 }
 int getsizeofDOF(dirORfile * a){
-	if(a->file) return ((a->filelengthifso)>>9) + (a->filelengthifso&0x1ff)?1:0;
-	else return (((a->entriesLength-1)*sizeof(inode))>>9) + (((a->entriesLength-1)*sizeof(inode))&0x1ff)?1:0;
+	if(a->file){
+	 	uint64_t b = ((a->filelengthifso)>>9) + ((a->filelengthifso&0x1ff)?1:0);
+		//printf("len %li -> %li\n",a->filelengthifso, b);
+		return b;
+	}
+	else return (((a->entriesLength-1)*sizeof(inode))>>9) + ((((a->entriesLength-1)*sizeof(inode))&0x1ff)?1:0);
 }
 int lastfucker = 0;
 uint64_t cDF(dirORfile *a, inode * inbase){
 	int b = getsizeofDOF(a);
 	char * m = calloc(0x200, b);
 	int st = getdiskregion(b);
-//	printf("cdf %s...\n", a->name);
+#ifdef IFS_DBG
+	printf("cdf %s...\n", a->name);
+#endif
 	int ourindex = lastfucker++;
 	if(a->file){
 		memcpy(m, a->filecontentsifso, a->filelengthifso);
 	}else{
 		for(uint64_t i = 0; i<a->entriesLength-1; i++){
-//			printf("cdf L %lu: %s btw %i and %i and fl %i\n", i, a->entries[i]->name, lastfucker, FIRST_UNU, b);
+#ifdef IFS_DBG
+			printf("cdf L %lu: %s btw last i# %i and last disk is %i and file len %i\n", i, a->entries[i]->name, lastfucker, FIRST_UNU, b);
+#endif
 			((uint64_t*)m)[i] = cDF(a->entries[i], inbase);
 		}
 	}
@@ -177,16 +188,19 @@ void shitfuckpiss2000(){
 	//now that we have the structure of the filesystem we just need to translate it into PENInodeS
 	//so to make a directory we have just a fat ass list of inodes pointing to names of files and shit
 	//to make an inode in that directory we find the size needed and the next region
-	int lnb = (((sizeof(inode)) * numinodes)>>9) + (((sizeof(inode))*numinodes)&0x1ff)?1:0;
+	int lnb = (((sizeof(inode)) * numinodes)>>9) + ((((sizeof(inode))*numinodes)&0x1ff)?1:0);
 	if(lnb == 0){
 		printf("0 inodes !\n");
 		errc++;
 	}
 	FIRST_UNU += lnb;
 	char * inba = calloc(lnb, 0x200);
-//	printf("time to cdf\n");
+#ifdef IFS_DBG
+	printf("[insertFileSystem] time to cdf\n");
+#endif
 	cDF(root, (inode*)inba);
-	/*inode * k = (inode*)inba;
+#ifdef IFS_DBG
+	inode * k = (inode*)inba;
 	for(int i = 0; i<lastfucker;i++){
 		printf("%i: %lu, %lu, %i, %i, %i, %lu, \"%s\"\n", i, k[i].chunkaddr1, k[i].chunklen, k[i].perms, k[i].owner, k[i].group, k[i].timestamp, k[i].name);
 		if(k[i].perms&0x8){
@@ -197,7 +211,8 @@ void shitfuckpiss2000(){
 				printf("\t%lu\n", ((uint64_t*)m)[i]);
 			}
 		}
-	}*/
+	}
+#endif
 	wdiskr(0, lnb, inba);
 	printf("done!\n");
 }

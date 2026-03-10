@@ -3,6 +3,7 @@
 #include "headers/proc.h"
 #include "headers/filesystem.h"
 #include "headers/flat.h"
+#include "headers/string.h"
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
 void ASMS_UM(void * n);
@@ -65,32 +66,36 @@ struct __attribute__((packed)) ExecArgsInternal {
 void ExecN(void * arguments){
 	//old process still has a pointer to all our arguments and shit so it can't free and exit until we're done with them
 	//TODO: mutexes/ semaphores/ at least SOME kinda synchronisation
+//	BREAK(0x1483);
 	struct ExecArgsInternal * A = arguments;
 	InitKernelFd();
-current_task_TCB->brk= (uint64_t)malloc(sizeof(prog_mem));
+//current_task_TCB->brk= (uint64_t)malloc(sizeof(prog_mem));
 //	acquire_semaphore(A->sema);
 //	BREAK((uint64_t)(A->File));
 	uint64_t AF = OPEN(A->File, 0x0); //TODO: open it with r/x
 	SEEK(AF, 0, 2);
 	uint64_t AFL = TELL(AF);
 	SEEK(AF, 0, 0);
-	//BREAK(AFL);
-	void * MEM = KPALLOCS(DIV64_32(AFL,0x200));
+	void * MEM = KPALLOCS(DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
 	READ(AF, MEM, AFL);
 	void * INI = PF(MEM, AFL);
-	P_FREES(MEM, DIV64_32(AFL, 0x200));
+//	BREAK(0x1482);
+	P_FREES(MEM, DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
 //	UPALLOC(0x2, (void*)0x0, AFL);
 //	READ(AF, 0x0, AFL*0x200);
 	//TODO argc and argv and shit or whatever
 	CLOSE(AF);
 //	release_semaphore(A->sema);
 	A->done = 1;
+//	BREAK(0x1481);
+	block_task(4);
 	switchToUserModeProc(INI);
 }
 uint64_t ExecFile(char * A, int argc, char ** argv){
 	thread_control_block * new = NULL;
 	struct ExecArgsInternal * newArgs = malloc(sizeof(struct ExecArgsInternal));
-	newArgs->File = A;
+	newArgs->File = malloc(strlen(A));
+	memcpy(newArgs->File, A, strlen(A));
 	newArgs -> arguments = argv;
 	newArgs->argc = argc;
 	newArgs->sema = create_semaphore(1); 

@@ -1,6 +1,29 @@
 .code64
 .section .text
+_start:
+xchgw %bx, %bx
+mov $sh_path, %rsi
+mov $0x7, %rdi
+mov $0, %rdx
+mov $sh_path, %rcx
+int $0x80
+movq %rax, (sh_path)
+mov %rax, %rsi
+mov $0xb, %rdi
+int $0x80
+movq (sh_path), %rsi
+mov $0xc, %rdi
+int $0x80
+mov $0xa, %rdi
+int $0x80
+mov $0x9, %rdi
+int $0x80
 L:
+xchgw %bx, %bx
+jmp L
+sh_path:
+	.string "/sbin/sh"
+/*L:
 xchgw %bx, %bx
 mov $open_sr, %rdx
 movb $0x11, 2(%rdx)
@@ -34,3 +57,4 @@ open_sr:
 	.string "# "
 a:
 	.quad 0x0
+*/
