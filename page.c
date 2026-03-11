@@ -1,5 +1,6 @@
 #include "headers/stdint.h"
 #include "headers/addresses.h"
+#include "headers/proc.h"
 #define PTV_MEMORYOVERHEAD 0
 void FLUSH_TLB();
 void FLUSH_TLB2();
@@ -455,7 +456,6 @@ void * VERIFY_USER(void * rdx){
 	}
 	return rdx; //_might_ cause PF, but never GP
 }
-#include "headers/proc.h"
 void U_PFREEALL(){
 	//loop through pdpt -> pde -> pt, free, free, free
 	//everything in UM belongs to our proc because mmio isn't implemented yet

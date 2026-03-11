@@ -4,6 +4,7 @@
 #include "headers/filesystem.h"
 #include "headers/flat.h"
 #include "headers/string.h"
+#include "headers/brk.h"
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
 void ASMS_UM(void * n);
@@ -62,7 +63,6 @@ struct __attribute__((packed)) ExecArgsInternal {
 	SEMAPHORE * sema;
 	int done;
 };
-#include "headers/brk.h"
 void ExecN(void * arguments){
 	//old process still has a pointer to all our arguments and shit so it can't free and exit until we're done with them
 	//TODO: mutexes/ semaphores/ at least SOME kinda synchronisation

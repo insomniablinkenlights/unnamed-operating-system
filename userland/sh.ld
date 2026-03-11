@@ -24,9 +24,9 @@ SECTIONS
 	TEXT_END = .;
 	TEXT_VADD = TEXT_START;
 	DATA_START = .;
-	.rodata (.):{
-		libc.o (.rodata)
-		sh.o (.rodata)
+	.data (.):{
+		libc.o (.*data)
+		sh.o (.*data)
 	}
 	DATA_END = .;
 	DATA_VADD = DATA_START;

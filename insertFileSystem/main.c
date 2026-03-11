@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "../headers/filesystem_compat.h"
 FILE * f = NULL;
 int errc=0;
@@ -55,10 +59,6 @@ typedef struct dirORfile{
 	uint64_t timestamp;
 	char * name;
 }dirORfile;
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 int numinodes = 0;
 dirORfile * readFile(const char * name){
 	numinodes++;

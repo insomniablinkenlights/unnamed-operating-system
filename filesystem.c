@@ -3,6 +3,10 @@
 #include "headers/chs.h"
 #include "headers/proc.h"
 #include "headers/filesystem.h"
+#include "headers/terminal.h"
+#include "headers/ps2.h"
+#include "headers/string.h"
+#include "headers/usermode.h"
 uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
 	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
@@ -147,7 +151,6 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
 		return 0x0;
 	}
 }
-#include "headers/terminal.h"
 /* there will be a global list of stdouts/stdins
  * one process will have an stdout bound to that of another process's stdin, or to an output source
  * same for stdin
@@ -207,7 +210,6 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	}
 	return 0;
 }
-#include "headers/ps2.h"
 uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){ //FIFO
 	//position is unused
 	stdIO * pairIn = arguments -> pairIn;
@@ -396,7 +398,6 @@ void CLOSE(uint64_t fd){
 	kernelFd[fd].function = NULL;
 	kernelFdLastClosed = fd;
 }
-#include "headers/string.h"
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	//   filename:    /DIR/DIR/DIR.../file or /file or /DIR/ or /DIR/DIR/
 	//   split filename into directories ... filename
@@ -549,7 +550,6 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	if(n!=NULL)free(n);*/
 	return k2;
 }
-#include "headers/usermode.h"
 void start_init_task(){ //why the fuck is it in here
 	create_kernel_task(PS2_DRIVER);
 	while(keyboard_init == 0x0){
