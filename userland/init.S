@@ -1,7 +1,6 @@
 .code64
 .section .text
 _start:
-xchgw %bx, %bx
 mov $sh_path, %rsi
 mov $0x7, %rdi
 mov $0, %rdx

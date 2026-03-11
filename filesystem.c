@@ -177,7 +177,6 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
-	BREAK((uint64_t)pairOut);
 	if(pairOut == TermSP){
 		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific. Later on this will have to be reworked to interface with abstract drivers.
 		write_to_screen(buffer, len);
@@ -596,17 +595,39 @@ void BIND_HANDLES(uint64_t FD0, uint64_t FD1){
 void BINDR(thread_control_block * b){ //POSIX hates this one simple trick!
 	//literally set b's stdio to be our stdio and delete our stdio
 	//TODO: multithreading-incompatible!
-	*(stdIO*)(((stream*)(b->file_descriptors))[0].arguments) = *(stdIO*)kernelFd[0].arguments;
+	/*stream * dfd = kernelFd[0];
+	stream * rfd = (stream*)(b->file_descriptors);
+	stdIO * dfds = (stdIO*)(dfd->arguments);
+	stdIO * rfds = (stdIO*)(rfd->arguments);
+	*rfd = *dfd;*/
+	giveSTDIOback(b, current_task_TCB);	
+	//*(stdIO*)(((stream*)(b->file_descriptors))[0].arguments) = ;
+/*	dfd = rfd;
+	dfds = rfds;
+	
 	((stdIO*)kernelFd[0].arguments)->pairIn->pairOut=(stdIO*)(((stream*)(b->file_descriptors))[0].arguments);
 	if(((stdIO*)kernelFd[0].arguments)->pairOut!=(stdIO*)TermSP)
 		((stdIO*)kernelFd[0].arguments)->pairOut->pairIn=(stdIO*)(((stream*)(b->file_descriptors))[0].arguments);
 	kernelFd[0].arguments = NULL;
-	kernelFd[0].function = NULL;
+	kernelFd[0].function = NULL;*/
 	//this should do it
 }
 void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor){
-	if(((stream*)recipient->file_descriptors)[0].function != StdIOStream){ //we lost a stdio somewhere in there
-		((stream*)recipient->file_descriptors)[0] = ((stream*)donor->file_descriptors)[0]; //dirty hack!
-		memfill(((stream*)donor->file_descriptors), sizeof(stream));
+	stream * rfd = (stream*)(recipient->file_descriptors);
+	stream * dfd = (stream*)(donor->file_descriptors);
+	//if(!rfd || !dfd){
+	//	ERROR(ERR_GSTDB, 0); //honestly we should init fds in ckproc
+	//}
+	if(rfd->function != StdIOStream){ //we lost a stdio somewhere in there
+		*rfd = *dfd; //copy the entire stream object, but now they have the same arguments!
+		/*stdIO * rfds = (stdIO*)(rfd->arguments); //rfds = dfds!
+		stdIO * dfds = (stdIO*)(dfd->arguments);
+		rfds->pairIn->pairOut=rfds; 
+		if(rfds->pairOut != (stdIO*)TermSP)
+			rfds->pairOut->pairIn = rfds;*/
+		memfill (dfd, sizeof(stream));
+		/*if(((stdIO*)((stream*)recipient->file_descriptors)[0].arguments)->pairOut!=(stdIO*)TermSP)
+			((stdIO*)(stream*)recipient->file_descriptors[0].arguments)->pairOut->pairIn=(stdIO*)(((stream*)(donor->file_descriptors))[0].arguments);
+		memfill(((stream*)donor->file_descriptors), sizeof(stream));*/
 	}
 }

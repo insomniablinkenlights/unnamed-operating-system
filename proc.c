@@ -71,7 +71,8 @@ enum task_states {
 	STATE_WAITING_FOR_PROC_UPDATE,
 	STATE_WAITING_FOR_LOCK,
 	STATE_WAITING_FOR_POKE,
-	STATE_WAITING_FOR_DEATH
+	STATE_WAITING_FOR_DEATH,
+	STATE_BURIED
 };
 uint64_t get_time_since_boot(){
 	return TIME;
@@ -149,11 +150,11 @@ void switch_to_task_wrapper(thread_control_block * task){
 		if(current_task_TCB->state == STATE_READY){
 			ERROR(ERR_SHOULD_NOT_BE_READY2, (uint64_t)current_task_TCB);
 		}
-		if(current_task_TCB->state == STATE_DEAD){
+		/*if(current_task_TCB->state == STATE_DEAD){
 			//add to the reaper list
 			current_task_TCB->next = DEAD_TASKS;
 			DEAD_TASKS=current_task_TCB;
-		}
+		}*/
 		if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){ //if we have only blocked tasks
 			time_slice_remaining = 0;
 		}else{
@@ -163,7 +164,8 @@ void switch_to_task_wrapper(thread_control_block * task){
 	update_time_used();
 	//free dead task's stuff IN stt
 	//switch fd?
-	FLUSH_TLB();
+	//if(task->PL ==3)
+	FLUSH_TLB(); //this should be INSIDE the stt func but it should be fineee
 	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }
@@ -197,9 +199,10 @@ void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Us
 		prev->next = victims->next;
 	}
 	//If the mother is illiterate, we can give her a pencil found on the body of her daughter:
+	//BREAK(0x948184);
 	giveSTDIOback(single_mother_of_3, missing_eight_year_old_white_girl);
 	//Alert the mother that her daughter has died.
-	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH){ //Psychopathic mother.
+	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH || missing_eight_year_old_white_girl->state==STATE_BURIED){ //Psychopathic mother or corpse buried already.
 	}else{
 		unblock_task(single_mother_of_3);
 	}
@@ -248,17 +251,21 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->time_used=0x0;
 	return M;
 }
-void reap(){
+void reap(){ //thread unsafe!
 	thread_control_block * task = DEAD_TASKS;
 	while(task != NULL){
-		BREAK((uint64_t)task);
+		//BREAK((uint64_t)task);
 		//free the stack somehow? doesn't work for the first task though
 		if(task->parent) murderChild(task);
 		if(task->file_descriptors) P_FREE(task->file_descriptors);
-		if(task->cr3) P_FREE(task->cr3);
+		if(task->cr3) P_FREE(task->cr3); //something tells me this is a shitty way to do it!
 		//vaddsp is unused
 		thread_control_block * next = task->next;
 		//free(task); //this doesn't work for the first task!
+		if(task->pid != 0x0){
+		//	BREAK(task->pid);
+			free(task);
+		}
 		task = next;
 	}
 	DEAD_TASKS = NULL;
@@ -285,9 +292,14 @@ void schedule(){
 //	if(current_task_TCB == NULL){
 //		asm volatile("xchgw %bx, %bx; call FAULT");
 //	}
-	reap();
 	if(current_task_TCB->state == STATE_READY){
 		ERROR(ERR_SHOULD_NOT_BE_READY3, (uint64_t) current_task_TCB);
+	}
+	reap(); //if we do it after the next bit, we'll run into issues because current_task_TCB will be nonnull but also not point to anything valid. Reap also has issues in the case of various 'waiter' structs such as semaphores, where it will get rid of a task but not remove references to it. The two options here are to either never free things and rewrite **all** waiters to check that a task is dead, or to have a centralised list of every waiter referring to a task. Both are **horrible** performance-wise...
+	if(current_task_TCB->state == STATE_DEAD){
+			//add to the reaper list
+			current_task_TCB->next = DEAD_TASKS;
+			DEAD_TASKS=current_task_TCB;
 	}
 	if(FIRST_THREAD != NULL){
 		task = FIRST_THREAD;
@@ -295,9 +307,12 @@ void schedule(){
 		switch_to_task_wrapper(task);
 	}else if(current_task_TCB->state == STATE_RUNNING){
 		//do nothing, just continue...
+	}else if(current_task_TCB->state == STATE_DEAD && current_task_TCB->parent->state == STATE_WAITING_FOR_DEATH){
+		current_task_TCB->state = STATE_BURIED;
+		switch_to_task_wrapper(current_task_TCB->parent);
 	}
 	else{
-		//when we unblock the task we co-opted, we're screwed...
+		//wait for a task to make its appearance. However, if there are only two tasks and one of them is waiting for us to die, then we should notify them and kill ourselves on the spot. Fun!
 		task=current_task_TCB;
 		if(task->state == STATE_READY){
 			ERROR(ERR_SHOULD_NOT_BE_READY, (uint64_t) task); //because we would have been on first thread

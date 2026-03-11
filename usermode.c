@@ -52,7 +52,7 @@ void UM_CLEANUP(){
 		ERROR(ERR_PL_CLEANUP, current_task_TCB->PL);
 	}
 	//clean up our UM pages, TODO: refactor when we do shared memory
-	U_PFREEALL();
+//	U_PFREEALL();
 	PROC_EXIT();
 }
 struct __attribute__((packed)) ExecArgsInternal {

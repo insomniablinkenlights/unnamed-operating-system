@@ -18,7 +18,7 @@ SECTIONS
 	.text (.):{
 		crt0.o (.text)
 		libc.o (.text)
-		sh.o (.text)
+		echo.o (.text)
 		int.o (.text)
 	}
 	TEXT_END = .;
@@ -26,14 +26,14 @@ SECTIONS
 	DATA_START = .;
 	.rodata (.):{
 		libc.o (.rodata)
-		sh.o (.rodata)
+		echo.o (.rodata)
 	}
 	DATA_END = .;
 	DATA_VADD = DATA_START;
 	. = BSS_VADD;
 	.bss (.):{ 
-		libc.o (.bss) 
-		sh.o (.bss)
+		libc.o (.bss)
+		echo.o (.bss)
 	}
 }
-OUTPUT(sh.bin)
+OUTPUT(echo.bin)

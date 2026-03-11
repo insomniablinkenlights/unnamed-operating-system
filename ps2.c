@@ -2,6 +2,7 @@
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
 #include "headers/ps2.h"
+#include "headers/terminal.h"
 void SEND_8042_CMD(uint8_t byte){
 	uint16_t timer = 0x1000;
 	while(timer>0){
@@ -264,6 +265,7 @@ void PS2_DRIVER(){
 					k->states = LsRsLaRaClNlLctRct;
 			       	        if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
 					else if(k->pR){
+						write_to_screen(&(k->ascii), 1);
 						 WRITE(0, &(k->ascii), 1);
 					}
 			}

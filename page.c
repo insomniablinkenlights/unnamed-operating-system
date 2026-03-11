@@ -455,11 +455,14 @@ void * VERIFY_USER(void * rdx){
 	}
 	return rdx; //_might_ cause PF, but never GP
 }
+#include "headers/proc.h"
 void U_PFREEALL(){
 	//loop through pdpt -> pde -> pt, free, free, free
 	//everything in UM belongs to our proc because mmio isn't implemented yet
 	//tables need to have the memory which allocates the TABLE freed followed by the top level entry which points to the table AS a table
-	for(int pdpt = 0; pdpt<512; pdpt++){
+	uint64_t endpdpt = (( ((uint64_t)current_task_TCB->brk->end)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9))+1;
+	uint64_t startpdpt = ( ((uint64_t)current_task_TCB->brk->start)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
+	for(int pdpt = startpdpt; pdpt<endpdpt; pdpt++){
 		if((get_pdptV(0, pdpt)&0x1) != 0x0){
 			for(int pde = 0; pde<512; pde++){
 				if((get_pdeV(0, pdpt, pde)&0x1) != 0x0){

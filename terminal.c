@@ -4,7 +4,6 @@
 int terminal_x = 0;
 int terminal_y = 0;
 void write_to_screen(char * k, uint64_t len){
-	BREAK(0x4311);
 	for(uint64_t i = 0; i<len; i++){
 		if(k[i] == 0x11){
 			keyboard_is_raw = !(keyboard_is_raw);

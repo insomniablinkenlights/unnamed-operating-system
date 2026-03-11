@@ -2,16 +2,18 @@
 .text
 .globl _start
 _start:
-	xchgw %bx, %bx
-	xor %ebp, %ebp
-	mov (%rsp), %edi
-	lea 8(%rsp), %rsi
-	lea 16(%rsp, %rdi, 8), %rdx
-	xor %eax, %eax
+	movq $0, %rbp
+	pushq %rbp
+	pushq %rbp
+	movq %rsp, %rsp
+	pushq %rsi
+	pushq %rdi
+	call initialize_standard_library
+//	call _init
+	//restore argc and argv
+	popq %rdi
+	popq %rsi
 	call main
 	mov %eax, %edi
-	xor %eax, %eax
-	mov $0x9, %rdi
-	int $0x80
-movabsq $0x80000000, %rax
-movq $0, (%rax)
+	call exit
+.size _start, . - _start
