@@ -7,7 +7,7 @@
 #include "headers/ps2.h"
 #include "headers/string.h"
 #include "headers/usermode.h"
-uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
+uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len, void * m){
 	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
 		ERROR(ERR_READ_DISKINV, disk);
@@ -15,12 +15,11 @@ uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len){
 	if(len&511){
 		ERROR(ERR_READ_SIZE, len);
 	}
-	void * m = KPALLOCS((len>>12) + 1);
-	void * m1;
+	if(m == NULL){
+		 m = KPALLOCS((len>>12) + 1);
+	}
 	for(uint32_t i = 0; i<DIV64_32(len, 512); i++){
-		m1 = floppy_read(LBA+i, 512, disk);
-		memcpy((char*)m+512*i, m1, 512);
-		P_FREE(m1);
+		floppy_read(LBA+i, 512, disk, (char*)m+512*i);
 	}
 	return m;
 
@@ -87,7 +86,7 @@ void InitKernelFd(){
 inode * GrabInode(uint64_t id){
 	int r = sizeof(inode);
 	int k2 = id;
-	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 512); //TODO: drive numbers
+	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 512, NULL); //TODO: drive numbers
 								    //this reads the nth block
 										      //I THINK that read is failing to do the memcpy maybe
 	inode * addr = (inode*)(((char*)m)+r*k2); //TERRIBLE hack. WHY does imulq not work?
@@ -115,9 +114,7 @@ void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
 /*	if(len>0x200){
 		ERROR(ERR_READ_SIZE_TEMP, len);
 	}*/
-	void * m = read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, len); //TODO: drive numbers
-	memcpy(buffer, m, len);
-	P_FREES(m, (len>>12) + 1);
+	 read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, len, buffer); //TODO: drive numbers
 }
 uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	//arguments[0] = inode #
@@ -128,8 +125,16 @@ uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, ui
 }
 uint64_t FileWriterStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	inode * k =GrabInode(((uint64_t*)arguments)[0]); 
-	InodeRead(k, position, buffer, len);
-	free(k);
+	if(position + len < k->chunklen*0x200){
+		char * m = (char*)read(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?(len&(~0x1FF)+1):len, NULL);
+		memcpy(m+position, buffer, len);
+		write(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?(len&(~0x1FF)+1):len, m);
+	}else{
+		//we have to reallocate the inode, so like about 50% of the contents of insertFileSystem
+		ERROR(ERR_FWS_UNIMP, 0);
+	}
+	//InodeRead(k, position, buffer, len);
+	//free(k);
 	return position+len;
 }
 uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t len, uint8_t rw){
@@ -204,7 +209,6 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 			}
 			release_semaphore(arguments->bufferSema); //this is a super tight loop, chances are we don't switch
 			PokeT((arguments->waiter)); //we go there, we clear the waiter, we return, we come back (?)
-		//	BREAK(0x842); //we never come back here -- we enter userspace, we go back to the read function, etc... this function is STILL in PokeT's unlock_stuff(), because it schedules right back. By the time we get to the scheduler, I have no idea what the states will be. Ideally we would poke the task after going back to waiting for an irq?
 				      //current_task_TCB->state == STATE_READY??
 		}
 	}
@@ -271,11 +275,14 @@ uint64_t StdIOStream(void * arguments, uint64_t position, void * buffer, uint64_
 }
 void PS2_DRIVER_BIND_STDIO(){
 	//assume stdio already exists and is unbound
-	free(((stdIO*)(kernelFd[0].arguments))->bufferOut);
-	free(((stdIO*)(kernelFd[0].arguments)));
+//	free(((stdIO*)(kernelFd[0].arguments))->bufferOut);
+//	free(((stdIO*)(kernelFd[0].arguments)));
 	(kernelFd[0].arguments) = TermSP;
+	kernelFd[0].function = StdIOStream;
+	kernelFd[0].position = 0;
+	kernelFd[0].flags = 0;
 }
-uint64_t OpenStdIn(){
+uint64_t OpenStdIn(){ //literally doesn't open stdin
 	if(!stdinSetup){
 		stdinSetup = 0x1;
 		TermSP = malloc(sizeof(stdIO));
@@ -291,11 +298,13 @@ uint64_t OpenStdIn(){
 		*(TermSP->waiter) = NULL;
 		//bind TermSP to PS2_DRIVER? Will need to do this in some kinda exec()?
 	}
-	stream * m = malloc(sizeof(stream));
+	return 0;
+	/*stream * m = malloc(sizeof(stream));
 	m->function = StdIOStream;
 	m->arguments = malloc(sizeof(stdIO));
-	((stdIO*)(m->arguments)) -> pairIn= TermSP;
-	((stdIO*)(m->arguments)) -> pairOut= TermSP; //should be NULL unless another process tries to bind to us... idk yet
+	((stdIO*)(m->arguments)) -> pairIn= NULL;
+	((stdIO*)(m->arguments)) -> pairOut= NULL;
+	//((stdIO*)(m->arguments)) -> pairOut= TermSP; //should be NULL unless another process tries to bind to us... idk yet
 	((stdIO*)(m->arguments)) -> bufferOut= malloc(sizeof(stdFIFOBUF));
 	((stdIO*)(m->arguments)) -> bufferOutEnd= ((stdIO*)(m->arguments))->bufferOut;
 	((stdIO*)(m->arguments)) -> bufferOut->datac=0;
@@ -323,7 +332,7 @@ uint64_t OpenStdIn(){
 	}
 	memcpy(kernelFd+kernelFdLastClosed, m, sizeof(stream));
 	free(m);
-	return kernelFdLastClosed;
+	return kernelFdLastClosed;*/
 
 }
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags);
@@ -417,17 +426,27 @@ stream * openDEV(char * name){
 	//more importantly, OPEN has no safeguards against a file ALREADY being open!
 	//so should we? nah.
 	//maybe for outputs....
-	if(strcmp(name, "tty"+CBASE)){ //PS/2 and VGA
+	if(strcmp(name, "tty"+CBASE) == 0){ //PS/2 and VGA
 		stream * k2 = malloc(sizeof(stream));
 		//k2->arguments = malloc(sizeof(uint64_t));
-		(k2->arguments)=TermSP;
+		(k2->arguments)=malloc(sizeof(stdIO));
+		((stdIO*)k2->arguments)-> pairIn= TermSP;
+		((stdIO*)k2->arguments)-> pairOut= TermSP;
+		((stdIO*)k2->arguments)-> bufferOut= malloc(sizeof(stdFIFOBUF));
+		((stdIO*)k2->arguments)-> bufferOutEnd= ((stdIO*)(k2->arguments))->bufferOut;
+		((stdIO*)k2->arguments)-> bufferOut->datac=0;
+		((stdIO*)k2->arguments)-> bufferOut->next=NULL;
+		((stdIO*)k2->arguments)-> bufferSema = create_semaphore(1);
+		((stdIO*)k2->arguments)-> type= 0; //normal process
+		((stdIO*)k2->arguments)-> waiter = malloc(sizeof(thread_control_block*));
+		*(((stdIO*)k2->arguments)->waiter) = NULL;
 		k2->position = 0x0;
 		k2->function = StdIOStream;
 		k2->flags = 0x0;
 		return k2;
 	}
 	ERROR(ERR_DEV_NF, (uint64_t)name);
-	if(strcmp(name, "com"+CBASE)){ //SERIAL
+	if(strcmp(name, "com"+CBASE) == 0){ //SERIAL
 	}
 }
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
@@ -478,7 +497,7 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 					ERROR(ERR_FILE_OPEN_SLASHCOUNT, 0x0);
 				}
 			}
-			directories[j] = malloc(i-k);
+			directories[j] = malloc(i-k+1);
 			while(l<i){
 				if(l-k < 0){
 					ERROR(ERR_FILE_OPEN_WHY, 0x0);
@@ -486,7 +505,8 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 				directories[j][l-k] = filename[l];
 				l++;
 			}
-			i++; //THIS SPLITS CORRECTLY
+			directories[j][i-k] = '\0';
+			i++; 
 			j++;
 		}
 	}
@@ -630,7 +650,7 @@ void BIND_HANDLES(uint64_t FD0, uint64_t FD1){
 	IO2->pairIn = IO1;
 	IO1->pairOut = IO2;
 }
-void BINDR(thread_control_block * b){ //POSIX hates this one simple trick!
+void BINDR(thread_control_block * b, int fd){ //POSIX hates this one simple trick!
 	//literally set b's stdio to be our stdio and delete our stdio
 	//TODO: multithreading-incompatible!
 	/*stream * dfd = kernelFd[0];
@@ -638,7 +658,7 @@ void BINDR(thread_control_block * b){ //POSIX hates this one simple trick!
 	stdIO * dfds = (stdIO*)(dfd->arguments);
 	stdIO * rfds = (stdIO*)(rfd->arguments);
 	*rfd = *dfd;*/
-	giveSTDIOback(b, current_task_TCB);	
+	giveSTDIOback(b, current_task_TCB, fd);	
 	//*(stdIO*)(((stream*)(b->file_descriptors))[0].arguments) = ;
 /*	dfd = rfd;
 	dfds = rfds;
@@ -650,22 +670,33 @@ void BINDR(thread_control_block * b){ //POSIX hates this one simple trick!
 	kernelFd[0].function = NULL;*/
 	//this should do it
 }
-void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor){
+void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor, int dfdn){
 	stream * rfd = (stream*)(recipient->file_descriptors);
 	stream * dfd = (stream*)(donor->file_descriptors);
 	//if(!rfd || !dfd){
 	//	ERROR(ERR_GSTDB, 0); //honestly we should init fds in ckproc
 	//}
+	if(dfd[dfdn].function != StdIOStream){
+		BREAK(0x48228);
+	}
+/*	char k = dfdn + '0';
+	write_to_screen(&k, 1);
+	if(dfd[dfdn].arguments != TermSP){
+		BREAK(0x648);
+		BREAK((uint64_t)(dfd[dfdn].arguments));
+	}*/
 	if(rfd->function != StdIOStream){ //we lost a stdio somewhere in there
-		*rfd = *dfd; //copy the entire stream object, but now they have the same arguments!
+		*rfd = dfd[dfdn]; //copy the entire stream object, but now they have the same arguments!
 		/*stdIO * rfds = (stdIO*)(rfd->arguments); //rfds = dfds!
 		stdIO * dfds = (stdIO*)(dfd->arguments);
 		rfds->pairIn->pairOut=rfds; 
 		if(rfds->pairOut != (stdIO*)TermSP)
 			rfds->pairOut->pairIn = rfds;*/
-		memfill (dfd, sizeof(stream));
+		memfill(&(dfd[dfdn]), sizeof(stream));
 		/*if(((stdIO*)((stream*)recipient->file_descriptors)[0].arguments)->pairOut!=(stdIO*)TermSP)
 			((stdIO*)(stream*)recipient->file_descriptors[0].arguments)->pairOut->pairIn=(stdIO*)(((stream*)(donor->file_descriptors))[0].arguments);
 		memfill(((stream*)donor->file_descriptors), sizeof(stream));*/
+	}else{
+		BREAK(0x5792);
 	}
 }

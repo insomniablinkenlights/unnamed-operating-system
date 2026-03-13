@@ -1,9 +1,12 @@
-arguments
+arguments DONE
+I've created a duct tape solution to the whole /dev thing, but I need to make processes NOT open an stdIO by default DONE
 disk scanning
 abstraction over inode
 	file cache
 	drive numbers
 make UPALLOC zero-initialise
+close stdios and streams and shit when a prockses clsoerns
+	hack done-ish
 figure out /dev so we can do /dev/tty or /dev/com or whatnot
 	hack done: made a stub for if the directory is /dev
 userland driver interface

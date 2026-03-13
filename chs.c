@@ -172,7 +172,7 @@ void floppy_init(){
 	free(aa);
 }
 int floppy_in_use = 0;
-uint64_t * floppy_read(uint64_t LBA, uint16_t len, uint8_t disk){
+void floppy_read(uint64_t LBA, uint16_t len, uint8_t disk, void * data){
 	
 	
 	//if(floppy_in_use ==1)
@@ -199,10 +199,8 @@ uint64_t * floppy_read(uint64_t LBA, uint16_t len, uint8_t disk){
 	FLOPPY_SEND_COMMAND(READ_DATA|0x40, aa, aa+8, aa, aa+7);
 	FLOPPY_SEND_COMMAND(SENSE_INTERRUPT, NULL, NULL, aa, aa+2); 
 	free(aa);
-	uint64_t * m = KPALLOC();
-	memcpy(m, (void*)(CBASE+0x1000), 512);
+	memcpy(data, (void*)(CBASE+0x1000), 512);
 	floppy_in_use = 0;
-	return m;
 }
 
 void floppy_write(uint64_t LBA, uint16_t len, void * data, uint8_t disk){ //kilobyte aligned
@@ -232,6 +230,7 @@ void floppy_write(uint64_t LBA, uint16_t len, void * data, uint8_t disk){ //kilo
 	free(aa);
 	floppy_in_use = 0;
 }
+#ifdef FLOPPY_DBG
 void test_floppy_sector_write(uint8_t sector){
 	uint64_t * m = KPALLOC();
 	uint64_t k = 0;
@@ -310,3 +309,4 @@ void memory_operation_test(){
 	P_FREE(x);
 	P_FREE(y);
 }
+#endif

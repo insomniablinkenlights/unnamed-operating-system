@@ -198,12 +198,11 @@ void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Us
 	}else{
 		prev->next = victims->next;
 	}
-	//If the mother is illiterate, we can give her a pencil found on the body of her daughter:
-	//BREAK(0x948184);
-	giveSTDIOback(single_mother_of_3, missing_eight_year_old_white_girl);
 	//Alert the mother that her daughter has died.
 	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH || missing_eight_year_old_white_girl->state==STATE_BURIED){ //Psychopathic mother or corpse buried already.
 	}else{
+		//If the mother is illiterate, we can give her a pencil found on the body of her daughter:
+		giveSTDIOback(single_mother_of_3, missing_eight_year_old_white_girl, 0);
 		unblock_task(single_mother_of_3);
 	}
 }
@@ -309,6 +308,7 @@ void schedule(){
 		//do nothing, just continue...
 	}else if(current_task_TCB->state == STATE_DEAD && current_task_TCB->parent->state == STATE_WAITING_FOR_DEATH){
 		current_task_TCB->state = STATE_BURIED;
+		giveSTDIOback(current_task_TCB->parent, current_task_TCB, 0);
 		switch_to_task_wrapper(current_task_TCB->parent);
 	}
 	else{

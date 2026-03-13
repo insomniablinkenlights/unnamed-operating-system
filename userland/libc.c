@@ -79,8 +79,8 @@ pid_t wait(int * __stat_loc){
 void bind(FILE * a, FILE * b){
 	INT0x80(0x8, a->fd, b->fd, 0);
 }
-void bindT(proc* a){
-	INT0x80(0xb, a->pid,0,0);
+void bindT(proc* a, FILE * b){
+	INT0x80(0xb, a->pid,b->fd,0);
 }
 //a malloc bucket contains: one long indicating memory size, one long indicating used size, one pointer to the next one, and then the memory itself
 void * malloc_bucket8bytes = NULL;

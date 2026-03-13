@@ -47,7 +47,7 @@ void proc_relent();
 void PROC_EXIT();
 void waitForChildToDie();
 thread_control_block * find_task_by_pid(uint64_t pid);
-void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor);
+void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor, int dfdn);
 void unblock_task(thread_control_block * task);
 void block_task(uint8_t reason);
 void unblock_child(uint64_t m);

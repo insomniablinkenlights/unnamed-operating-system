@@ -85,7 +85,7 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			rV = 0;
 			break;
 		case 0xb:
-			BINDR(find_child_by_pid(rsi));
+			BINDR(find_child_by_pid(rsi), rdx);
 			rV = 0;
 			break;
 		case 0xc: //signal child

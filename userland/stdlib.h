@@ -30,7 +30,7 @@ char *fgets(char *__s, int __n, FILE *__stream);
 proc * execv(const char *__path, char *const __argv[]);
 pid_t wait(int *__stat_loc);
 void bind(FILE * a, FILE * b);
-void bindT(proc * a);
+void bindT(proc * a, FILE * b);
 void exit(int c);
 void unblock(proc * pid);
 #endif

@@ -48,7 +48,6 @@ sti
 //mov $0x1000, %rsi
 //mov %rax, %rdx
 //call floppy_write
-call memory_operation_test
 //call floppy_driver_test
 //start init task!
 call start_init_task

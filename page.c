@@ -74,6 +74,7 @@ void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 			}
 		}
 	}
+	memfill((void*)k, 0x1000);
 	return (void*)k;
 }
 void * KPALLOCS(int64_t size){
@@ -432,7 +433,7 @@ void P_FREE(void * v_add){
 	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
 	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))>>(12+9*3);
 	PL_SV(V2P(v_add)>>12, 0x0);
-	memfill(v_add, 0x1000); //initialise the memory again
+//	memfill(v_add, 0x1000); //initialise the memory again
 	get_pdeVP(pml4,pdpt,pde)[pt] = 0x0;
 	/*if(pt == 0){ //this is stupid. why did i do this.
 		get_pdptVP(pml4,pdpt)[pde] = 0x0; 

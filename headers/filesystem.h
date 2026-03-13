@@ -20,5 +20,5 @@ typedef struct stream {
 }stream;
 void BIND_T_STDIO(thread_control_block * A, uint64_t FD0, thread_control_block * B, uint64_t FD1); 
 void BIND_HANDLES(uint64_t FD0, uint64_t FD1);
-void BINDR(thread_control_block * b);
+void BINDR(thread_control_block * b, int fd);
 #endif

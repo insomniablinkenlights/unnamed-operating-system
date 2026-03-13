@@ -125,6 +125,7 @@ enum ERROR_CODES{
 	ERR_GSTDB=0x58,
 	ERR_DEV_NF=0x59,
 	ERR_NULL_PAIROUT=0x5a,
+	ERR_FWS_UNIMP=0x5b,
 };
 #define NULL  ((void*)0x0)
 

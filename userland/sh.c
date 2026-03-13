@@ -29,7 +29,7 @@ int main(){
 		
 	//	bind(stdin, k->stdin); //stdin passes to k->stdin
 		//bind(k->stdout, stdout); //k->stdout passes to stdout
-		bindT(k);
+		bindT(k, stdout);
 		unblock(k);
 		//so  k->stdio->pairout = stdio, stdio->pairin = k->stdio
 		//but we want k->stdio->pairout=stdio->pairout, stdio->pairin->pairout=k->stdio
