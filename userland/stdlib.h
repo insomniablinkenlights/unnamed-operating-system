@@ -4,6 +4,7 @@ uint64_t INT0x80(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx);
 void * sbrk(uint64_t size);
 #define pid_t uint64_t
 #define size_t uint64_t
+#define NULL ((void*)0x0)
 typedef struct FILE{
 	uint64_t fd;
 }FILE;

@@ -247,7 +247,7 @@ xor %rdi, %rdi
 .endm
 .global ASMS_UM
 ASMS_UM:
-
+mov %rsi, %r9
 mov $(0x20 |3), %ax
 mov %ax, %ds
 mov %ax, %es
@@ -260,6 +260,7 @@ pushf
 push $(0x18|3)
 push %rdi
 CLEARALLREGS
+mov %r9, %rsi
 iretq
 .global get_rspplus1
 get_rspplus1:

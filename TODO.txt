@@ -1,0 +1,22 @@
+arguments
+disk scanning
+abstraction over inode
+	file cache
+	drive numbers
+make UPALLOC zero-initialise
+figure out /dev so we can do /dev/tty or /dev/com or whatnot
+	hack done: made a stub for if the directory is /dev
+userland driver interface
+	we need like a way to make an abstract 'driver' and have a list of drivers
+	first I think I should phase out termsp
+	the error system needs to be revamped...
+make processes unbound to terminals by default
+	termSP was always a little bit of a hack, it'll be better to have init just open /dev/tty0
+figure out if unix or posix has a checkstream
+	IT DOESN'T -- it's normally done in parallel i assume
+	this is only a problem because we'll catch fire in the serial driver on a read, figure out a better way to do this?
+figure out stream TYPE
+	- unify serial and ps/2
+check if serial works
+user privs, directories
+process errors

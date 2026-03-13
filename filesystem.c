@@ -180,7 +180,7 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
-	if(pairOut == TermSP){
+	if(pairOut != NULL && pairOut->type == 1){
 		//because we're interfacing directly with terminal drivers here, we don't need to do anything specific. Later on this will have to be reworked to interface with abstract drivers.
 		write_to_screen(buffer, len);
 	}else{
@@ -287,6 +287,7 @@ uint64_t OpenStdIn(){
 		TermSP->bufferOut->next = NULL;
 		TermSP->bufferSema = create_semaphore(1); //can only be read or write
 		TermSP->waiter = malloc(sizeof(thread_control_block*));
+		TermSP->type = 1; //TTY
 		*(TermSP->waiter) = NULL;
 		//bind TermSP to PS2_DRIVER? Will need to do this in some kinda exec()?
 	}
@@ -326,6 +327,20 @@ uint64_t OpenStdIn(){
 
 }
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags);
+int checkStream(uint64_t fd){
+	if(fd>DIV64_32(0x1000,sizeof(stream))){
+		ERROR(ERR_FD_TOOHIGH, fd);
+	}
+	if(kernelFd[fd].function == NULL){
+		ERROR(ERR_FD_DNE, fd);
+	}
+	if(kernelFd[fd].function == StdIOStream){
+		if(((stdIO*)(kernelFd[fd].arguments))->pairIn->bufferOut->datac>0) return 1;
+		return 0;
+	}else{
+		return 1;
+	}
+}
 void READ(uint64_t fd, void * buffer, uint64_t len){
 	if(fd>DIV64_32(0x1000,sizeof(stream))){
 		ERROR(ERR_FD_TOOHIGH, fd);
@@ -398,9 +413,27 @@ void CLOSE(uint64_t fd){
 	kernelFd[fd].function = NULL;
 	kernelFdLastClosed = fd;
 }
+stream * openDEV(char * name){
+	//more importantly, OPEN has no safeguards against a file ALREADY being open!
+	//so should we? nah.
+	//maybe for outputs....
+	if(strcmp(name, "tty"+CBASE)){ //PS/2 and VGA
+		stream * k2 = malloc(sizeof(stream));
+		//k2->arguments = malloc(sizeof(uint64_t));
+		(k2->arguments)=TermSP;
+		k2->position = 0x0;
+		k2->function = StdIOStream;
+		k2->flags = 0x0;
+		return k2;
+	}
+	ERROR(ERR_DEV_NF, (uint64_t)name);
+	if(strcmp(name, "com"+CBASE)){ //SERIAL
+	}
+}
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	//   filename:    /DIR/DIR/DIR.../file or /file or /DIR/ or /DIR/DIR/
 	//   split filename into directories ... filename
+	// TODO: fix malloc and free here
 	char ** directories = NULL;
 	char * name = NULL;
 	int slashcount = 0;
@@ -467,6 +500,11 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	name[e-i] = 0x0; //for some reason it's not doing it
 	if(strcmp(name, filename+i)){
 		ERROR(ERR_SPLIT_FAIL, (uint64_t)name);
+	}
+	if(slashcount != 0x0){
+		if(strcmp(directories[0], "dev" +CBASE) == 0){ //we have a device in /dev
+			return openDEV(name);
+		}
 	}
 //	name ++; //if this fixes it i will die
 	// scan through all files in basedir, find one with correct name, repeat
@@ -559,7 +597,7 @@ void start_init_task(){ //why the fuck is it in here
 //		nano_sleep(0x1000000);
 //	}
 	InitKernelFd();
-	int m = ExecFile("/sbin/init\0"+CBASE, 0, NULL);
+	int m = ExecFile("/sbin/init\0"+CBASE, ""+CBASE);
 	unblock_child(m);
 	waitForChildToDie();
 	ERROR(ERR_DEADCODE,1);

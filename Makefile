@@ -50,7 +50,7 @@ build/userland/%.o: userland/%.S
 build/userland/%.o: build/userland/%.s
 	as $< -o $@
 build/userland/%.s: userland/%.c
-	$(CC) $< -S -o $@ -ffreestanding
+	$(CC) $< -S -o $@ -ffreestanding -Wall -Wextra -Wpedantic
 build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h
 	gcc -Wall -Wextra -Wpedantic -Werror -O0 insertFileSystem/main.c -o build/insertFileSystem.out
 clean:

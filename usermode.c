@@ -7,7 +7,7 @@
 #include "headers/brk.h"
 extern void * tss64; //defined in protk.S
 void LTR(uint64_t n);
-void ASMS_UM(void * n);
+void ASMS_UM(void * n, uint64_t rsi);
 uint64_t get_rspplus1(uint64_t k);
 void loadRSP0(uint64_t rsp){
 	current_task_TCB->rsp0 = (uint64_t*)rsp; //TODO: this will need to be reloaded whenever we sproc
@@ -16,7 +16,7 @@ void loadRSP0(uint64_t rsp){
 	//LTR(0x28);
 	//TODO: refresh TSS
 }
-void switchToUserModeProc(void* UP){
+void switchToUserModeProc(void* UP, int rdi){
 	//ASSUMPTIONS
 	//pagetables already loaded at UP
 	//user process at UP
@@ -33,20 +33,8 @@ void switchToUserModeProc(void* UP){
 	//and it frees that rsp0 after it's done
 	loadRSP0(((uint64_t)KPALLOC())+0xff8); //we'll need to clean this up, TODO: memory leak
 				     //we need to reload rsp0 every time i think
-	ASMS_UM(UP);
-	//TODO: page faults :3
-	//by which I mean that we need to dynamically allocate user memory as it's needed
+	ASMS_UM(UP, rdi); //actually rsi
 
-}
-void run_EXE(char * name){
-	//TODO: tasks need to switch between virtual address spaces
-	void * initialM = UPALLOC(0x2, (void*)0x0, 0x1);
-	//BREAK(0x4892);
-	uint64_t id = OPEN(name, 0x0); 
-	READ(id, initialM, 0x200); //TODO: actually read the ENTIRE thing
-	CLOSE(id);
-	//we SHOULD have no more FDs -- TODO: make proc create KernelFd
-	switchToUserModeProc(initialM);
 }
 void UM_CLEANUP(){
 	if(current_task_TCB->PL != 0x3){
@@ -58,8 +46,7 @@ void UM_CLEANUP(){
 }
 struct __attribute__((packed)) ExecArgsInternal {
 	char * File;
-	char ** arguments;
-	int argc;
+	char * arguments;
 	SEMAPHORE * sema;
 	int done;
 };
@@ -78,7 +65,8 @@ void ExecN(void * arguments){
 	SEEK(AF, 0, 0);
 	void * MEM = KPALLOCS(DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
 	READ(AF, MEM, AFL);
-	void * INI = PF(MEM, AFL);
+	int rdi;
+	void * INI = PF(MEM, AFL, A->arguments, &rdi);
 //	BREAK(0x1482);
 	P_FREES(MEM, DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
 //	UPALLOC(0x2, (void*)0x0, AFL);
@@ -89,15 +77,15 @@ void ExecN(void * arguments){
 	A->done = 1;
 //	BREAK(0x1481);
 	block_task(4);
-	switchToUserModeProc(INI);
+	switchToUserModeProc(INI, rdi);
 }
-uint64_t ExecFile(char * A, int argc, char ** argv){
+uint64_t ExecFile(char * A, char * argv){
 	thread_control_block * new = NULL;
 	struct ExecArgsInternal * newArgs = malloc(sizeof(struct ExecArgsInternal));
-	newArgs->File = malloc(strlen(A));
-	memcpy(newArgs->File, A, strlen(A));
-	newArgs -> arguments = argv;
-	newArgs->argc = argc;
+	newArgs->File = malloc(strlen(A)+1);
+	memcpy(newArgs->File, A, strlen(A)+1);
+	newArgs -> arguments = malloc(strlen(argv)+1);
+	memcpy(newArgs->arguments, argv, strlen(argv)+1);
 	newArgs->sema = create_semaphore(1); 
 	newArgs->done = 0;
 	new = ckprocA(ExecN, newArgs);

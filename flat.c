@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/string.h"
 #include "headers/addresses.h"
 #include "headers/flat.h"
 #include "headers/proc.h"
@@ -27,7 +28,7 @@ void alseg(uint64_t VADD, uint64_t END, uint64_t START, char* fi){
 	((prog_mem*)(current_task_TCB->brk))->end = MAX(VADD+END-START, (((prog_mem*)(current_task_TCB->brk))->end));
 	memcpy((void*)(VADD), ((char*)fi)+START, text_size);
 }
-void * PF(void * fi, uint64_t filesize){
+void * PF(void * fi, uint64_t filesize, char * arguments, int * argv){
 	//fi is in kernel memory
 	PFH * M = (PFH*)fi;
 	if(current_task_TCB->brk == 0x0){
@@ -84,6 +85,16 @@ void * PF(void * fi, uint64_t filesize){
 		((prog_mem*)(current_task_TCB->brk))->start = MIN(M->BSS_VADD, (((prog_mem*)(current_task_TCB->brk))->start));
 		((prog_mem*)(current_task_TCB->brk))->end = MAX(M->BSS_VADD+M->BSS_SIZE, (((prog_mem*)(current_task_TCB->brk))->end));
 		//UPALLOC(2, (void*)(M->BSS_VADD), MAX(1,(M->BSS_SIZE)>>12));
+	}
+	int k = strlen(arguments)+1;
+	if(current_task_TCB->brk->start > k){
+		current_task_TCB->brk->start -= k;
+		memcpy((void*)(current_task_TCB->brk->start), arguments, k);
+		*argv = current_task_TCB->brk->start;
+	}else{
+		current_task_TCB->brk->end += k;
+		memcpy((void*)(current_task_TCB->brk->end - k), arguments, k);
+		*argv = current_task_TCB->brk->end - k;
 	}
 	return (void*)(M->TEXT_VADD);
 }

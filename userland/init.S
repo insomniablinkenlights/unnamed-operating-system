@@ -3,7 +3,6 @@
 _start:
 mov $sh_path, %rsi
 mov $0x7, %rdi
-mov $0, %rdx
 mov $sh_path, %rcx
 int $0x80
 movq %rax, (sh_path)
