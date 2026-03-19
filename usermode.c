@@ -21,7 +21,6 @@ void switchToUserModeProc(void* UP, int rdi){
 	//pagetables already loaded at UP
 	//user process at UP
 	//if two of these get called at the same time, this will break. the obvious solution is to disable the scheduler, but then how do we re-enable it?
-	current_task_TCB->PL = 0x3; //write down that we're in usermode
 	if((uint64_t)UP>CBASE){
 		ERROR(ERR_NOT_UM, (uint64_t)UP);
 	}
@@ -33,6 +32,11 @@ void switchToUserModeProc(void* UP, int rdi){
 	//and it frees that rsp0 after it's done
 	loadRSP0(((uint64_t)KPALLOC())+0xff8); //we'll need to clean this up, TODO: memory leak
 				     //we need to reload rsp0 every time i think
+	if(current_task_TCB->PL == 0x2){
+		lIOPL(0x3);
+	}else{
+		lIOPL(0x0);
+	}
 	ASMS_UM(UP, rdi); //actually rsi
 
 }
@@ -74,6 +78,7 @@ void ExecN(void * arguments){
 	//TODO argc and argv and shit or whatever
 	CLOSE(AF);
 //	release_semaphore(A->sema);
+	current_task_TCB->PL = 0x3; //write down that we're in usermode
 	A->done = 1;
 //	BREAK(0x1481);
 	block_task(4);

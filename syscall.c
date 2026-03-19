@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/device.h"
 #include "headers/usermode.h"
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
@@ -38,28 +39,6 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 				ERROR(ERR_BINFMT_BROKEN, (uint64_t)k);
 			}
 			k->end += rsi; //we'll always trigger a pagefault but now we can handle those !!
-			/*if(rsi & 0xfff){
-				if(k->end & 0xfff){
-					if(((k->end&0xfff)+rsi)<0x1000){ 
-						k->end += rsi;
-					}else{ //i don't wanna support this shit
-						ERROR(ERR_TODO_SBRK, rsi);
-					}
-					//UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), (rsi>>12)+1); //imagine rsi<0x1000?
-					k->end += rsi;
-				}else{
-					//UPALLOC(0x2, (char*)(k->end), (rsi>>12)+1);
-					k->end+=rsi;
-				}
-			}else{
-				if(k->end & 0xfff){
-					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
-					k->end += rsi;
-				}else{
-					UPALLOC(0x2,(char*)( k->end), rsi>>12);
-					k->end += rsi;
-				}	
-			}*/
 			rV = k->end;
 			break;
 		case 0x6: //tell
@@ -93,6 +72,33 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			unblock_child(rsi);
 			rV = 0;
 			break;
+		case 0xd:
+			if(current_task_TCB->PL == 2){
+				d0xD((void*)rsi); //this changes some of the assumptions we make...
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0xe:
+			if(current_task_TCB->PL == 2){
+				d0xE(rsi, (void*)rdx);
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0xf:
+			if(current_task_TCB->PL == 2){
+				wait_for_irq(rsi, 0, NULL);
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0x10: //check stream
+			rV = checkStream(rsi);
+			break;
 		default:
 			ERROR(ERR_INT, rdi);
 			rV = -1;
@@ -102,5 +108,4 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 	P_FREE(newrsp0);
 	loadRSP0((uint64_t)oldrsp0);
 	return rV;
-
 }

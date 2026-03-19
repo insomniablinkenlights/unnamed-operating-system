@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "../headers/filesystem_compat.h"
+#define IFS_DBG
 FILE * f = NULL;
 int errc=0;
 uint64_t flll;
@@ -16,9 +17,10 @@ FILE * f2o(const char * a, char * b){
 		errc+=1;
 		printf("[insertFileSystem] missing '%s'\n", a);
 	}
+	fseek(c, 0, SEEK_SET);
 	return c;
 }
-inode constructInode(uint64_t chunkaddr1, uint64_t chunklen, uint16_t perms, uint8_t owner, uint8_t group, uint64_t timestamp, char * name){
+inode constructInode(uint64_t chunkaddr1, uint64_t chunklen, uint16_t perms, uint8_t owner, uint8_t group, uint64_t timestamp, const char * name){
 	inode m;
 	m.chunkaddr1=chunkaddr1;
 	m.chunklen=chunklen;
@@ -34,8 +36,11 @@ void wdiskr(uint64_t lba, uint64_t len, char * mrg){
 		printf("[insertFileSystem] LBA > fileSIZE!\n");
 		errc++;
 	}
+#ifdef IFS_DBG
+	printf("write of size %lu chx to LBA %lu\n", len, lba);
+#endif
 	fseek(f, LBA_FS_BASE*0x200+0x200*lba, SEEK_SET);
-	fwrite(mrg, 0x1, 0x200*len, f);
+	fwrite(mrg, 0x200, len, f);
 }
 int get_fl(const char * a){
 	FILE * m = f2o(a, "rb");
@@ -62,20 +67,22 @@ typedef struct dirORfile{
 int numinodes = 0;
 dirORfile * readFile(const char * name){
 	numinodes++;
-	dirORfile * L = malloc(sizeof(dirORfile));
+	dirORfile * L = calloc(1, sizeof(dirORfile));
 	L->file = 1;
-	struct stat * us = malloc(sizeof(struct stat));
+	struct stat * us = calloc(1,sizeof(struct stat));
+	printf("stat '%s'\n", name);
 	stat(name, us);
 	L->perms = us->st_mode;
 	L->group = us->st_gid;
 	L->owner = us->st_uid;
 	L->timestamp= us->st_mtime;
 	L->name = (char*)strrchr(name, '/')+1;
-	char * n2 = malloc(strlen(L->name));
+	printf("L->name '%s'\n",L->name );
+	char * n2 = calloc(strlen(L->name)+1,1);
 	strcpy(n2, L->name);
 	L->name = n2;
-	FILE * m = f2o(name, "rb");
 	int LEN = get_fl(name);
+	FILE * m = f2o(name, "rb");
 	L->filelengthifso=LEN;
 	L->filecontentsifso=calloc(LEN+1,sizeof(char));
 	fread(L->filecontentsifso, 0x1, LEN, m);
@@ -107,8 +114,9 @@ dirORfile * readDir(const char * name){
 		printf("[insertFileSystem] renaming sysroot...\n");
 		L->name = "";
 	}
-	char * cna = calloc(strlen(L->name), 1);
-	strcpy(cna, L->name);
+	//in some cases L->name has a length of 0!
+	char * cna = calloc(strlen(L->name)+1, 1);
+	memcpy(cna, L->name, strlen(L->name)+1);
 	L->name = cna;
 //	printf("name: \"%s\", lname: \"%s\"\n", name, L->name);
 	cont = readdir(m);
@@ -119,8 +127,14 @@ dirORfile * readDir(const char * name){
 			cont = readdir(m);
 			continue;
 		}
-		char * K = calloc(strlen(name)+3+strlen(cont->d_name),1);
-		strcpy(K, name);
+		char * K = calloc(strlen(name)+4+strlen(cont->d_name),1);
+		if(strcmp("", name) == 0){
+			//printf("strcpy(K, .)\n");
+			strcpy(K, ".");
+		}else{
+			//printf("strcpy(K, %s)\n", name);
+			strcpy(K, name);
+		}
 		strcat(K, "/");
 		strcat(K, cont ->d_name);
 	//	free(us);
@@ -134,7 +148,8 @@ dirORfile * readDir(const char * name){
 		}else{
 			L->entries[L->entriesLength-1] = readDir(K);
 		}
-		L->entries = realloc(L->entries, L->entriesLength+1);
+		free(K);
+		L->entries = realloc(L->entries, sizeof(dirORfile*)*(L->entriesLength+1));
 		L->entriesLength++;
 	//	free(cont);
 		cont = readdir(m);
@@ -149,7 +164,7 @@ int getdiskregion(int size){
 	FIRST_UNU+=size;
 	return FIRST_UNU-size;
 }
-int getsizeofDOF(dirORfile * a){
+int getsizeofDOF(const dirORfile * a){
 	if(a->file){
 	 	uint64_t b = ((a->filelengthifso)>>9) + ((a->filelengthifso&0x1ff)?1:0);
 		//printf("len %li -> %li\n",a->filelengthifso, b);
@@ -157,7 +172,7 @@ int getsizeofDOF(dirORfile * a){
 	}
 	else return (((a->entriesLength-1)*sizeof(inode))>>9) + ((((a->entriesLength-1)*sizeof(inode))&0x1ff)?1:0);
 }
-int lastfucker = 0;
+int lastfucker = 0; //inode index
 uint64_t cDF(dirORfile *a, inode * inbase){
 	int b = getsizeofDOF(a);
 	char * m = calloc(0x200, b);
@@ -166,19 +181,55 @@ uint64_t cDF(dirORfile *a, inode * inbase){
 	printf("cdf %s...\n", a->name);
 #endif
 	int ourindex = lastfucker++;
+	uint64_t i = 0;
 	if(a->file){
+		if(a->filelengthifso > (uint64_t)b*0x200){
+			printf("[insertFileSystem] %lu>%i\n",a->filelengthifso/0x200, b);
+			errc++;
+		}
 		memcpy(m, a->filecontentsifso, a->filelengthifso);
 	}else{
-		for(uint64_t i = 0; i<a->entriesLength-1; i++){
+		for(i = 0; i<a->entriesLength-1; i++){
 #ifdef IFS_DBG
 			printf("cdf L %lu: %s btw last i# %i and last disk is %i and file len %i\n", i, a->entries[i]->name, lastfucker, FIRST_UNU, b);
 #endif
 			((uint64_t*)m)[i] = cDF(a->entries[i], inbase);
+			//printf("%s[%lu] = %lu\n",a->name, i,((uint64_t*)m)[i]);
+		}
+#ifdef IFS_DBG
+		/*printf("start %s\n", a->name);
+		for(i = 0; i<(uint64_t)b<<6; i++){
+			printf("\t %lu\n", ((uint64_t*)m)[i]);
+		}
+		printf("end %s\n", a->name);*/
+#endif
+	}
+	wdiskr(st, b, m); //lba (*0x200), len (*0x200), mrg (char *)
+	char * m2 = calloc(0x200, b);
+	fseek(f, 0x200*LBA_FS_BASE+0x200*st, SEEK_SET);
+	fread(m2, b, 0x200, f); 
+	int hashadmismatch = 0;
+	for(i = 0; i<(uint64_t)b<<6; i++){
+		if(((uint64_t*)m2)[i] != ((uint64_t*)m)[i]){
+			printf("%lu != %lu, index %lu in %s\n", ((uint64_t*)m2)[i], ((uint64_t*)m)[i], i, a->name);
+			hashadmismatch=1;
 		}
 	}
-	wdiskr(st, b, m);
+	if(hashadmismatch){
+		printf("mismatch in %s\n", a->name);
+		errc++;
+	}
+	free(m2);
 	free(m);
 	inbase[ourindex] = constructInode(st, b, a->file?0x1:0x8, 0x0, 0x0, 0x0, a->name);
+	if(!a->file){
+		free(a->entries);
+	}else{
+		free(a->filecontentsifso);
+	}
+	
+	free(a->name);
+	free(a);
 //	printf("cdf %s done\n", a->name);
 	return ourindex;
 }
@@ -189,6 +240,7 @@ void shitfuckpiss2000(){
 	//so to make a directory we have just a fat ass list of inodes pointing to names of files and shit
 	//to make an inode in that directory we find the size needed and the next region
 	int lnb = (((sizeof(inode)) * numinodes)>>9) + ((((sizeof(inode))*numinodes)&0x1ff)?1:0);
+	printf("lnb is %i\n", lnb);
 	if(lnb == 0){
 		printf("0 inodes !\n");
 		errc++;
@@ -204,16 +256,20 @@ void shitfuckpiss2000(){
 	for(int i = 0; i<lastfucker;i++){
 		printf("%i: %lu, %lu, %i, %i, %i, %lu, \"%s\"\n", i, k[i].chunkaddr1, k[i].chunklen, k[i].perms, k[i].owner, k[i].group, k[i].timestamp, k[i].name);
 		if(k[i].perms&0x8){
-			char * m = calloc(1, 0x200);
-			fseek(f, SEEK_SET, 0x200*LBA_FS_BASE+0x200*k[i].chunkaddr1);
-			fread(m, 0x1, 0x200, f); 
-			for(int i = 0; i<0x200/8; i++){
-				printf("\t%lu\n", ((uint64_t*)m)[i]);
+			char * m = calloc(k[i].chunklen, 0x200);
+			fseek(f, 0x200*LBA_FS_BASE+0x200*k[i].chunkaddr1, SEEK_SET);
+			fread(m, k[i].chunklen, 0x200, f); 
+			//printf("%lu chkl\n",k[i].chunklen*0x200>>3);
+			//printf("true/false: %i\n", (uint64_t)(9) < (k[i].chunklen*0x200>>3));
+			for(uint64_t i2 = 0; i2<(k[i].chunklen<<6); i2++){
+				printf("\t%lu\n", ((uint64_t*)m)[i2]);
 			}
+			free(m);
 		}
 	}
 #endif
 	wdiskr(0, lnb, inba);
+	free(inba);
 	printf("done!\n");
 }
 /*void fuckstuffup(){
@@ -284,6 +340,7 @@ void constructKeymap(){
 	memcpy(K+0x180, qwertySHIFT, 0x53);
 	fwrite(K, 0x1, 0x200, f2);
 	fclose(f2);
+	free(K);
 }
 int main(){
 	f = fopen("../floppya.img", "rb+");

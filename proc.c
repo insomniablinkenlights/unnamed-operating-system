@@ -166,6 +166,11 @@ void switch_to_task_wrapper(thread_control_block * task){
 	//switch fd?
 	//if(task->PL ==3)
 	FLUSH_TLB(); //this should be INSIDE the stt func but it should be fineee
+	if(task->PL == 0x2){
+		lIOPL(0x3);
+	}else{
+		lIOPL(0x0);
+	}
 	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }

@@ -32,6 +32,7 @@ void memcpy(void * dest, void * src, uint64_t count);
 void memfill(void * dest, uint64_t count);
 void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void));
 void nano_sleep(uint64_t t);
+void lIOPL(uint64_t no);
 void ERROR(uint64_t code, uint64_t type);
 enum ERROR_CODES{
 	ERR_FSC = 0,
@@ -126,6 +127,7 @@ enum ERROR_CODES{
 	ERR_DEV_NF=0x59,
 	ERR_NULL_PAIROUT=0x5a,
 	ERR_FWS_UNIMP=0x5b,
+	ERR_INODE_NE2=0x5c,
 };
 #define NULL  ((void*)0x0)
 

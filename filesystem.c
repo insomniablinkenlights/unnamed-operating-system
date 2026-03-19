@@ -7,6 +7,7 @@
 #include "headers/ps2.h"
 #include "headers/string.h"
 #include "headers/usermode.h"
+#include "headers/device.h"
 uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len, void * m){
 	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
@@ -91,16 +92,17 @@ inode * GrabInode(uint64_t id){
 										      //I THINK that read is failing to do the memcpy maybe
 	inode * addr = (inode*)(((char*)m)+r*k2); //TERRIBLE hack. WHY does imulq not work?
 						  //TODO: this breaks past 512!!!
-	if((void*)addr == m && id != 0){
+	if((void*)addr == m && id != 0){ //r*k2 == 0
 		//id != 0, sizeof != 0, id*sizeof = 0. ????
-		ERROR(ERR_INODE_NE, k2*r);
+		ERROR(ERR_INODE_NE2, k2*r);
 	}
 	if(addr->chunklen==0x0){
-		BREAK(LBA_FS_BASE);
+		/*BREAK(LBA_FS_BASE);
 		BREAK(DIV64_32(id*sizeof(inode),512));
 		BREAK((uint64_t)m);
 		BREAK(MOD64_32(id*sizeof(inode), 512));
-		ERROR(ERR_INODE_NE, DIV64_32(id*sizeof(inode),512));
+		ERROR(ERR_INODE_NE, DIV64_32(id*sizeof(inode),512));*/
+		ERROR(ERR_INODE_NE, id);
 	}
 	inode * k = malloc(r);
 	memcpy(k, addr, r);
@@ -160,7 +162,7 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
  * one process will have an stdout bound to that of another process's stdin, or to an output source
  * same for stdin
  * */
-typedef struct __attribute__((packed)) stdFIFOBUF{
+/*typedef struct __attribute__((packed)) stdFIFOBUF{
 	uint64_t data[32];
 	uint8_t datac; //with this we can access 256 bytes, so 8*32 quads
 	struct stdFIFOBUF* next;
@@ -173,7 +175,7 @@ typedef struct stdIO{
 	uint64_t type;	
 	SEMAPHORE * bufferSema;
 	thread_control_block ** waiter;
-}stdIO;
+}stdIO;*/ //moved to filesystem.h
 /*to write to this, grab the pair, check if type == terminal or whatever, check that sizeof buffer is less than bcount, if so write shit, otherwise block until we can*/
 /*to read from this, if bcount > 0 read everything, if we still need to read then block until we can, otherwise block*/
 /*how do processes decide to bind stdio?*/
@@ -444,10 +446,12 @@ stream * openDEV(char * name){
 		k2->function = StdIOStream;
 		k2->flags = 0x0;
 		return k2;
+	}else{
+		return dOpen(name);
 	}
-	ERROR(ERR_DEV_NF, (uint64_t)name);
+/*	ERROR(ERR_DEV_NF, (uint64_t)name);
 	if(strcmp(name, "com"+CBASE) == 0){ //SERIAL
-	}
+	}*/
 }
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	//   filename:    /DIR/DIR/DIR.../file or /file or /DIR/ or /DIR/DIR/
@@ -617,6 +621,9 @@ void start_init_task(){ //why the fuck is it in here
 //		nano_sleep(0x1000000);
 //	}
 	InitKernelFd();
+	BREAK(0x888);
+	dProbe("/kmod/serial\0"+CBASE, ""+CBASE);
+	BREAK(0x999);
 	int m = ExecFile("/sbin/init\0"+CBASE, ""+CBASE);
 	unblock_child(m);
 	waitForChildToDie();

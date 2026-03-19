@@ -309,3 +309,14 @@ mov $12, %rdi
 call unblockirq
 RECLOBBER
 iretq
+.global lIOPL
+lIOPL:
+pushfq
+and $0x3, %rdi
+shl $12, %rdi
+pop %rax
+and $(~(0x3<<12)), %rax
+or %rdi, %rax
+push %rax
+popfq
+ret

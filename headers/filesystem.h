@@ -21,4 +21,19 @@ typedef struct stream {
 void BIND_T_STDIO(thread_control_block * A, uint64_t FD0, thread_control_block * B, uint64_t FD1); 
 void BIND_HANDLES(uint64_t FD0, uint64_t FD1);
 void BINDR(thread_control_block * b, int fd);
+int checkStream(uint64_t fd);
+typedef struct __attribute__((packed)) stdFIFOBUF {
+	uint64_t data [32];
+	uint8_t datac;
+	struct stdFIFOBUF * next;
+}stdFIFOBUF;
+typedef struct stdIO {
+	struct stdIO * pairIn;
+	struct stdIO * pairOut;
+	stdFIFOBUF * bufferOut;
+	stdFIFOBUF * bufferOutEnd;
+	uint64_t type;
+	SEMAPHORE * bufferSema;
+	thread_control_block ** waiter;
+} stdIO;
 #endif

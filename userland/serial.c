@@ -1,6 +1,5 @@
-#include "headers/stdint.h"
-#include "headers/addresses.h"
-#include "headers/filesystem.h"
+#include "stdlib.h"
+#include <stdint.h>
 int COMtoIO(int no){
 	switch(no){
 		case 1: return 0x3f8;
@@ -40,7 +39,7 @@ void sBaud(int cb, int k){
 }
 void sProt(int cb, int bits, int parity, int stop){
 	int b = inb(cb+3) & 0x80;
-	b = b | (bits -5) | ((stop-1) <<2) | (parity<<3)
+	b = b | (bits -5) | ((stop-1) <<2) | (parity<<3);
 	outb(cb+3, b);
 }
 void setupSerial(){
@@ -54,13 +53,15 @@ void setupSerial(){
 			//rts == 'request to send'
 			//dtr == 'data terminal ready'
 }
-void COM_DRIVER(){
+void main(){
+	asm volatile("xchgw %bx, %bx");
+	INT0x80(0xd, (uint64_t)"com", 0, 0);
 	int irb = 0;
 	setupSerial();
-	InitKernelFd();
 	while(1){
-		wait_for_irq(0x4, 0x0, NULL);
-		irb = 3&(in(ourCOMbase+2)>>1);
+		//wait_for_irq(0x4);
+		INT0x80(0xf, 0x4, 0 , 0);
+		irb = 3&(inb(ourCOMbase+2)>>1);
 		/* bits 1-2 of irb
 			0 = modem status
 			1 = transmitter holding register empty
@@ -70,18 +71,22 @@ void COM_DRIVER(){
 			3 = receiver line status
 		*/
 		if(irb == 0 || irb == 3){
-			ERROR(ERR_COM_UNIMPLEMENTED, irb);
+			//ERROR(ERR_COM_UNIMPLEMENTED, irb);
+			INT0x80(0,(uint64_t) "error com unimplemented :3",0, 0);
 		}
 		if(irb == 1){
 			//we can send one byte
-			if(checkStream(0)){
-				READ(0, &irb, 1);
+			if(INT0x80(0x10, 0, 0, 0)){
+				//READ(0, &irb, 1);
+				irb = getc(stdin);
 				outb(ourCOMbase, irb);
 			}
 		}else if(irb == 2){
 			//grab a byte
 			irb = inb(ourCOMbase);
-			WRITE(0, &irb, 1);
+			//WRITE(0, &irb, 1);
+			putc(irb, stdout);
 		}
 	}
 }
+

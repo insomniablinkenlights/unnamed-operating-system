@@ -150,3 +150,12 @@ void exit(int c){
 void unblock(proc * pid){
 	INT0x80(0xc, pid->pid, 0, 0);
 }
+FILE * fopen(const char * FILENAME, const char * OPENTYPE){
+	//TODO: flags
+	FILE * k = malloc(sizeof(FILE));
+	k->fd = INT0x80(0x2, (uint64_t)FILENAME, 0,0);
+	return k;
+}
+int fclose(FILE * stream){
+	return INT0x80(0x3, stream->fd, 0 , 0);
+}
