@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "../headers/filesystem_compat.h"
-#define IFS_DBG
 FILE * f = NULL;
 int errc=0;
 uint64_t flll;
@@ -70,14 +69,18 @@ dirORfile * readFile(const char * name){
 	dirORfile * L = calloc(1, sizeof(dirORfile));
 	L->file = 1;
 	struct stat * us = calloc(1,sizeof(struct stat));
+#ifdef IFS_DBG
 	printf("stat '%s'\n", name);
+#endif
 	stat(name, us);
 	L->perms = us->st_mode;
 	L->group = us->st_gid;
 	L->owner = us->st_uid;
 	L->timestamp= us->st_mtime;
 	L->name = (char*)strrchr(name, '/')+1;
+#ifdef IFS_DBG
 	printf("L->name '%s'\n",L->name );
+#endif
 	char * n2 = calloc(strlen(L->name)+1,1);
 	strcpy(n2, L->name);
 	L->name = n2;
@@ -100,7 +103,6 @@ dirORfile * readDir(const char * name){
 		printf("[insertFileSystem] could not open %s!\n", name);
 		errc++;
 	}
-	//struct dirent * cont = readdir(m);
 	struct dirent* cont;
 	struct stat * us = calloc(1, sizeof(struct stat));
 	stat(name, us);
@@ -111,33 +113,29 @@ dirORfile * readDir(const char * name){
 	L->timestamp = us->st_mtime;
 	L->name = (char*)strrchr(name, '/')+1;
 	if(strcmp(name, "./sysroot")==0){
+#ifdef IFS_DBG
 		printf("[insertFileSystem] renaming sysroot...\n");
+#endif
 		L->name = "";
 	}
 	//in some cases L->name has a length of 0!
 	char * cna = calloc(strlen(L->name)+1, 1);
 	memcpy(cna, L->name, strlen(L->name)+1);
 	L->name = cna;
-//	printf("name: \"%s\", lname: \"%s\"\n", name, L->name);
 	cont = readdir(m);
 	while(cont != NULL){
 		if(strcmp(".", cont->d_name)==0 || strcmp("..", cont->d_name)==0){
-//			printf("skipping %s\n", cont->d_name);
-			//free(cont);
 			cont = readdir(m);
 			continue;
 		}
 		char * K = calloc(strlen(name)+4+strlen(cont->d_name),1);
 		if(strcmp("", name) == 0){
-			//printf("strcpy(K, .)\n");
 			strcpy(K, ".");
 		}else{
-			//printf("strcpy(K, %s)\n", name);
 			strcpy(K, name);
 		}
 		strcat(K, "/");
 		strcat(K, cont ->d_name);
-	//	free(us);
 		stat(K, us);
 		if(us == NULL){
 			printf("[insertFileSystem] could not find %s\n", K);
@@ -151,12 +149,10 @@ dirORfile * readDir(const char * name){
 		free(K);
 		L->entries = realloc(L->entries, sizeof(dirORfile*)*(L->entriesLength+1));
 		L->entriesLength++;
-	//	free(cont);
 		cont = readdir(m);
 	}
 	closedir(m);
 	free(us);
-	//if(cont) free(cont);
 	return L;
 }
 int FIRST_UNU = 0;
@@ -167,7 +163,6 @@ int getdiskregion(int size){
 int getsizeofDOF(const dirORfile * a){
 	if(a->file){
 	 	uint64_t b = ((a->filelengthifso)>>9) + ((a->filelengthifso&0x1ff)?1:0);
-		//printf("len %li -> %li\n",a->filelengthifso, b);
 		return b;
 	}
 	else return (((a->entriesLength-1)*sizeof(inode))>>9) + ((((a->entriesLength-1)*sizeof(inode))&0x1ff)?1:0);
@@ -194,15 +189,7 @@ uint64_t cDF(dirORfile *a, inode * inbase){
 			printf("cdf L %lu: %s btw last i# %i and last disk is %i and file len %i\n", i, a->entries[i]->name, lastfucker, FIRST_UNU, b);
 #endif
 			((uint64_t*)m)[i] = cDF(a->entries[i], inbase);
-			//printf("%s[%lu] = %lu\n",a->name, i,((uint64_t*)m)[i]);
 		}
-#ifdef IFS_DBG
-		/*printf("start %s\n", a->name);
-		for(i = 0; i<(uint64_t)b<<6; i++){
-			printf("\t %lu\n", ((uint64_t*)m)[i]);
-		}
-		printf("end %s\n", a->name);*/
-#endif
 	}
 	wdiskr(st, b, m); //lba (*0x200), len (*0x200), mrg (char *)
 	char * m2 = calloc(0x200, b);
@@ -211,12 +198,12 @@ uint64_t cDF(dirORfile *a, inode * inbase){
 	int hashadmismatch = 0;
 	for(i = 0; i<(uint64_t)b<<6; i++){
 		if(((uint64_t*)m2)[i] != ((uint64_t*)m)[i]){
-			printf("%lu != %lu, index %lu in %s\n", ((uint64_t*)m2)[i], ((uint64_t*)m)[i], i, a->name);
+			//printf("%lu != %lu, index %lu in %s\n", ((uint64_t*)m2)[i], ((uint64_t*)m)[i], i, a->name);
 			hashadmismatch=1;
 		}
 	}
 	if(hashadmismatch){
-		printf("mismatch in %s\n", a->name);
+		printf("[insertFileSystem] mismatch in %s\n", a->name);
 		errc++;
 	}
 	free(m2);
@@ -230,17 +217,11 @@ uint64_t cDF(dirORfile *a, inode * inbase){
 	
 	free(a->name);
 	free(a);
-//	printf("cdf %s done\n", a->name);
 	return ourindex;
 }
 void shitfuckpiss2000(){
-	dirORfile * root = readDir("./sysroot"); //the first fucker will have a 
-						 //what the hell was i typing?
-	//now that we have the structure of the filesystem we just need to translate it into PENInodeS
-	//so to make a directory we have just a fat ass list of inodes pointing to names of files and shit
-	//to make an inode in that directory we find the size needed and the next region
+	dirORfile * root = readDir("./sysroot");
 	int lnb = (((sizeof(inode)) * numinodes)>>9) + ((((sizeof(inode))*numinodes)&0x1ff)?1:0);
-	printf("lnb is %i\n", lnb);
 	if(lnb == 0){
 		printf("0 inodes !\n");
 		errc++;
@@ -259,8 +240,6 @@ void shitfuckpiss2000(){
 			char * m = calloc(k[i].chunklen, 0x200);
 			fseek(f, 0x200*LBA_FS_BASE+0x200*k[i].chunkaddr1, SEEK_SET);
 			fread(m, k[i].chunklen, 0x200, f); 
-			//printf("%lu chkl\n",k[i].chunklen*0x200>>3);
-			//printf("true/false: %i\n", (uint64_t)(9) < (k[i].chunklen*0x200>>3));
 			for(uint64_t i2 = 0; i2<(k[i].chunklen<<6); i2++){
 				printf("\t%lu\n", ((uint64_t*)m)[i2]);
 			}
@@ -270,61 +249,8 @@ void shitfuckpiss2000(){
 #endif
 	wdiskr(0, lnb, inba);
 	free(inba);
-	printf("done!\n");
+	printf("[insertFileSystem] done!\n");
 }
-/*void fuckstuffup(){
-	//TODO: dirent
-	char * m = calloc(0x200, 0x1);
-	inode * k = ((inode*)m);
-	k[0] = constructInode(1, 1, 8, 0, 0, 0, "");
-	k[1] = constructInode(2, 1, 8, 0, 0, 0, "sbin");
-	printf("INIT LENGTH IS %i\n", get_fl("./init.bin"));
-	k[2] = constructInode(3, 1, 0x1, 0x0, 0x0, 0x0, "init");
-	k[3] = constructInode(4, 1, 0x1, 0x0, 0x0, 0x0, "sh");
-	k[4] = constructInode(5, 2, 0x1, 0x0, 0x0, 0x0, "txt");
-	k[5] = constructInode(7, 1, 0x8, 0x0, 0x0, 0x0, "etc");
-	k[6] = constructInode(8, 1, 0x1, 0x0, 0x0, 0x0, "keymap");
-	write(m, LBA_FS_BASE);
-	memset(m, 0x0, 0x200);
-	uint64_t * k2 = (uint64_t*)m;
-	k2[0] = 0x1;
-	k2[1] = 0x5;
-	k2[2] = 0x0;
-	write(k2, LBA_FS_BASE+1);
-	memset(m, 0x0, 0x200);
-	k2[0] = 0x2;
-	k2[1] = 0x3;
-	k2[2] = 0x4;
-	k2[3] = 0x0;
-	write(k2, LBA_FS_BASE+2);
-	memset(m, 0x0, 0x200);
-	k2[0] = 0x6;
-	k2[1] = 0x0;
-	write(k2, LBA_FS_BASE+7);
-
-
-	memset(m, 0x0, 0x200);
-	FILE * f2 = f2o("./init.bin", "rb");
-	fread(m, 1, 0x200, f2);
-	fclose(f2);
-	write(m, LBA_FS_BASE+3);
-	memset(m, 0x0, 0x200);
-	f2 = f2o("./sh.bin", "rb");
-	fread(m, 1, 0x200, f2);
-	fclose(f2);
-	write(m, LBA_FS_BASE+4);
-	memset(m, 0x0, 0x200);
-	f2 = f2o("../userland/txt", "rb");
-	fread(m, 1, 0x400, f2);
-	fclose(f2);
-	write(m, LBA_FS_BASE+5);
-	write(m+0x200, LBA_FS_BASE+6);
-	memset(m, 0x0, 0x200);
-	f2 = f2o("./keymap", "rb");
-	fread(m, 1, 0x200, f2);
-	fclose(f2);
-	write(m, LBA_FS_BASE+8);
-}*/
 void constructKeymap(){
 	FILE*f2=f2o("./sysroot/etc/keymap","wb");
 	fseek(f2, 0, SEEK_SET);
