@@ -44,7 +44,7 @@ void sProt(int cb, int bits, int parity, int stop){
 }
 void setupSerial(){
 	ourCOMbase = COMtoIO(findCOM());
-	outb(ourCOMbase +1, 0x00);
+	outb(ourCOMbase +1, 0x00); //disable interrupts
 	sBaud(ourCOMbase, 4);
 	sProt(ourCOMbase, 8,0,1);
 	//some weird hardcoded values
@@ -54,14 +54,27 @@ void setupSerial(){
 			//dtr == 'data terminal ready'
 }
 void main(){
-	asm volatile("xchgw %bx, %bx");
 	INT0x80(0xd, (uint64_t)"com", 0, 0);
 	int irb = 0;
 	setupSerial();
+	//outb(ourCOMbase, 'a');
 	while(1){
-		//wait_for_irq(0x4);
-		INT0x80(0xf, 0x4, 0 , 0);
-		irb = 3&(inb(ourCOMbase+2)>>1);
+		outb(ourCOMbase +1, 1|2|4|8); //enable all interrupts
+		//TODO: if we have two things happen then we get no more interrupts. to actually check if we have an interrupt, we should check against the first byte of the IRB.
+		int rv = INT0x80(0xf, 0x4, 0 , 0);
+		outb(ourCOMbase+1, 0); //disable interrupts (for now...)
+		if(rv == -1){
+			//our PL is wrong
+			INT0x80(0xE,0, (uint64_t) "error pl incorrect",0);
+		}
+		irb = inb(ourCOMbase+2);
+		if(irb&1){
+			INT0x80(0xE,irb,(uint64_t) "serial interrupt triggered, but nothing to read!",0);
+			//strange. let's just ignore it.
+			continue;
+		}
+		asm volatile("xchgw %bx, %bx");
+		irb = 3&(irb>>1);
 		/* bits 1-2 of irb
 			0 = modem status
 			1 = transmitter holding register empty
@@ -70,16 +83,45 @@ void main(){
 				we can read 1 byte
 			3 = receiver line status
 		*/
-		if(irb == 0 || irb == 3){
-			//ERROR(ERR_COM_UNIMPLEMENTED, irb);
-			INT0x80(0,(uint64_t) "error com unimplemented :3",0, 0);
-		}
-		if(irb == 1){
+		if(irb == 0){
+			uint8_t ms = inb(ourCOMbase+6);
+			/*modem status register:
+				0 = delta clear to send
+					cts input has changed since last read
+				1 = delta data set ready
+					dsr input has changed state since last read
+				2 = trailing edge of ring indicator: ri input has changed from low to high state
+				3 = delta data carrier detect: dcd input has changed state since read
+				4 = clear to send (inverted CTS)
+				5 = data set ready (inverted DSR)
+				6 = ring indicator (inverted RI)
+				7 = data carrier detect (inverted DCD)
+		
+*/
+		}else if(irb == 3){
+			uint8_t ls = inb(ourCOMbase+5);
+			if((ls &( 1 << 7)) || (ls & (7<<1)))
+				INT0x80(0xe, 0, (uint64_t) "various LSR errors", 0 );
+/*line status register:
+	0 = data ready: is there readable data?
+	1 = overrun error: has there been data lost?
+	2 = parity error: transmission error detected by parity
+	3 = framing error: was a stop bit missing?
+	4 = break indicator: was there a break in data input
+	5 = transmitter holding register empty (can data be sent?)
+	6 = transmitter empty
+	7 = impending error
+*/
+			
+		}else if(irb == 1){
+//		asm volatile("xchgw %bx, %bx");
 			//we can send one byte
 			if(INT0x80(0x10, 0, 0, 0)){
 				//READ(0, &irb, 1);
 				irb = getc(stdin);
 				outb(ourCOMbase, irb);
+			}else{
+				INT0x80(0x12, 0x1000000, 0, 0);
 			}
 		}else if(irb == 2){
 			//grab a byte

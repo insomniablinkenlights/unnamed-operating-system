@@ -13,7 +13,18 @@ _start:
 	//restore argc and argv
 	popq %rdi
 	popq %rsi
+	pushq %rdi
+	pushq %rsi
+	call splitc
+	mov %rax, (argc)
+	popq %rsi
+	popq %rdi
+	call splitv
+	mov (argc), %rdi
+	mov %rax, %rsi
 	call main
 	mov %eax, %edi
 	call exit
 .size _start, . - _start
+argc:
+.quad 0x0

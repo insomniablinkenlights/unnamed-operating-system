@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 void lba_2_chs(uint32_t lba, uint8_t* cyl, uint8_t* head, uint8_t* sector){
 	*cyl = (char)DIV64_32(lba,(36));

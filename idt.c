@@ -1,7 +1,7 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 #include "headers/idt.h"
-
 typedef struct InterruptDescriptor64 {
 	uint16_t offset_1; //offset bits 0-15
 	uint16_t selector; //code segment selector in gdt or ldt
@@ -92,7 +92,7 @@ void constructIDT(void *addr){
 	newIDTEntry(addr, (PS2_HANDLER), 0x08, 0x0, 0x8E, 0x21); //0x21, int 1
 	newIDTEntry(addr, NULL, 0x0, 0x0, 0x0, 0x22); //0x22, int 2
 	newIDTEntry(addr, NULL, 0x0, 0x0, 0x0, 0x23); //0x23, int 3
-	newIDTEntry(addr, NULL, 0x0, 0x0, 0x0, 0x24); //0x24, int 4
+	newIDTEntry(addr, (SER04), 0x8, 0x0, 0x8E, 0x24); //0x24, int 4
 	newIDTEntry(addr, NULL, 0x0, 0x0, 0x0, 0x25); //0x25, int 5
 	newIDTEntry(addr, (FL), 0x8, 0x0, 0x8E, 0x26); //0x26, int 6
 	newIDTEntry(addr, (SPIRQ), 0x8, 0x0, 0x8F, 0x27); //0x27, int 7
@@ -133,4 +133,7 @@ void PIC_PS2(){
 }
 void PIC_PS2off(){
 	IRQ_set_mask(0x1);
+}
+void COM_IRQ(){
+	IRQ_clear_mask(0x4);
 }

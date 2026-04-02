@@ -1,5 +1,10 @@
 #include <stdint.h>
 #include "stdlib.h"
+void strcpy(char * to, char * from){
+	for(int i = 0; from[i]; i++){
+		to[i] = from[i];
+	}
+}
 uint64_t INT0x80(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx);
 void * sbrk(uint64_t size){
 	return (void*)INT0x80(5, size, 0, 0);
@@ -35,12 +40,12 @@ void memcpy(void * b, void * a, uint64_t size){
 		((char*)b)[i] = ((char*)a)[i];
 	}
 }
-void * realloc(void * a, uint64_t size){ //assume we're not making it smaller
+/*void * realloc(void * a, uint64_t size){ //assume we're not making it smaller
 	void * b = malloc(size);
 	memcpy(b, a, ((uint64_t*)a)[-1]);
 	free(a);
 	return b;
-}
+}*/
 int puts(const char *__restrict __s){
 	char * s2 = malloc(strlen(__s)+2);
 	memcpy(s2, __s, strlen(__s));
@@ -87,12 +92,21 @@ void * malloc_bucket8bytes = NULL;
 void * malloc_bucket64bytes = NULL;
 void * malloc_bucket512bytes = NULL;
 void * malloc_bucket4096bytes = NULL;
+void initMalloc(){
+	malloc_bucket8bytes = NULL;
+	malloc_bucket64bytes = NULL;
+	malloc_bucket512bytes = NULL;
+	malloc_bucket4096bytes = NULL;
+}
 void * malloc(uint64_t size){
 	char * k;
 	if(size > 4096){
 		k = ((char*)(sbrk(size+16)))-size;
 		((unsigned int*)k)[-3] = size;
 		((unsigned int*)k)[-4] = 4;
+		if(((uint64_t)k) > 0x80000){
+			asm volatile("xchgw %bx, %bx; xchgw %dx, %dx");
+		}
 		return k;
 	}
 	//TODO: somehow hash the size efficiently into a 0->3
@@ -104,16 +118,26 @@ void * malloc(uint64_t size){
 		case 0: mp = &malloc_bucket8bytes; s3 = 8;break;
 		case 1: mp = &malloc_bucket64bytes; s3=64;break;
 		case 2: mp = &malloc_bucket512bytes;s3=512; break;
-		case 3: mp = &malloc_bucket4096bytes;s3=4096;
+		case 3: mp = &malloc_bucket4096bytes;s3=4096;break;
+		default:
+			//TODO: error handling
+			//asm volatile("xchgw %bx, %bx; xchgw %dx, %dx");
 	}
-	if(mp && *mp){
+	//mp = &malloc bucket
+	//*mp = &first location
+	//for some reason *mp ends up as out of bounds here. it shouldn't have been initialised like that in the first place! is this a segmentation thing?
+	//if mp is too low, we get all sorts of weird overflows and shit right here.
+	if(mp /*is s2 <3, that is to say*/&& *mp /*is the first entry nonnull?*/){
 		k = *mp;
-		*mp = (void*)(((uint64_t*)(*mp))[-1]);
+		*mp = (void*)(((uint64_t*)(*mp))[-1]); //set the first entry to be its [-1] which is apparently the next one. free MUST set this!
 	}else{
 		k = ((char*)sbrk(s3+16)) - s3;
 	}
 	((unsigned int*)k)[-3] = size;
 	((unsigned int*)k)[-4] = s2;
+		if(((uint64_t)k) > 0x80000){
+			//asm volatile("xchgw %bx, %bx; xchgw %dx, %dx");
+		}
 	return k;
 }
 void free(void * a){
@@ -140,6 +164,7 @@ void free(void * a){
 	return;
 }
 void initialize_standard_library(){
+	initMalloc();
 	stdin = malloc(sizeof(FILE));
 	stdin->fd = 0;
 	stdout = stdin;
@@ -150,6 +175,9 @@ void exit(int c){
 void unblock(proc * pid){
 	INT0x80(0xc, pid->pid, 0, 0);
 }
+void unblockAndWait(proc * pid){
+	INT0x80(0x11, pid->pid, 0, 0);
+}
 FILE * fopen(const char * FILENAME, const char * OPENTYPE){
 	//TODO: flags
 	FILE * k = malloc(sizeof(FILE));
@@ -158,4 +186,84 @@ FILE * fopen(const char * FILENAME, const char * OPENTYPE){
 }
 int fclose(FILE * stream){
 	return INT0x80(0x3, stream->fd, 0 , 0);
+}
+uint64_t splitc(uint64_t argc, char * argv){
+	int inquote = 0;
+	int inbksl = 0;
+	int ar = 1;
+	for(int i = 0; argv[i]; i++){
+		if(inbksl){
+			inbksl = 0;
+			continue;
+		}else if(inquote){
+			if(argv[i] == '\\'){
+				inbksl = 1;
+				continue;
+			}else if((argv[i] == '\'' && inquote == 1) || (argv[i] == '"' && inquote == 2)){
+				inquote = 0;		continue;
+		}continue;
+		}else if(argv[i] == ' '){
+		ar++;
+}else if(argv[i] == '\\')inbksl=1;
+if(argv[i] == '"') inquote=2;
+if(argv[i] == '\'')inquote=1;
+	}
+	return ar;
+}
+void * realloc(void * a, size_t size){
+	void * b = malloc(size);
+	memcpy(b,a, ((unsigned int*)a)[-3]);
+	free(a);
+	return b;
+}
+void addcv(char ** argv, int k, int * il, char n){
+	argv[k] = realloc(argv[k], *il +1); //inefficient! TODO
+	argv[k][*il] = 0;
+	argv[k][(*il)-1] = n;
+	*il = (*il) +1;
+}
+char ** splitv(uint64_t argc, char * arg){
+	
+	//and now... for splitting the args!
+	char ** argv = malloc(8*argc);
+	int inquote =0;
+	int inbksl = 0;
+	int k = 0;
+	int il = 1;
+	argv[0] = malloc(2);
+	for(int i = 0; arg[i]; i++){
+		if(arg[i] == '\\'){
+			if(inquote){
+				if((arg[i+1] == '\'' && inquote == 1) || (arg[i+1] == '"' && inquote == 2) || arg[i+1] == '\\'){
+					//escape the character	
+					addcv(argv, k, &il, arg[i+1]);
+					i++;
+				}else{
+					//otherwise just put it in verbatim
+					addcv(argv, k, &il, arg[i]);
+				}
+			}else{
+				addcv(argv, k, &il, arg[i+1]);
+				i++;
+			}
+		}else if(arg[i] == '"' || arg[i] == '\''){
+			if((inquote==1&&(arg[i]=='\'')) || (inquote == 2 && (arg[i] =='"'))){
+				//jesus christ. those boys over there cheated on their drivers' tests. i'm getting ran over TwT
+				inquote=0;
+			}else if(inquote == 0){
+				inquote = (arg[i] == '\'')?1:2;
+			}else{
+				addcv(argv, k, &il, arg[i]);
+			}
+		}else if(arg[i] == ' ' && !inquote){
+			while(arg[i] == ' ')i++;
+			i--;
+			il = 1;
+			k++;
+			argv[k] = malloc(il+1);
+		}else{
+			addcv(argv, k, &il, arg[i]);
+		}
+	}
+	return argv;
 }

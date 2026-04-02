@@ -32,6 +32,8 @@ SECTIONS
 	DATA_VADD = DATA_START;
 	. = BSS_VADD;
 	.bss (.):{ 
+		crt0.o (.bss)
+		int.o (.bss)
 		libc.o (.bss)
 		echo.o (.bss)
 	}

@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
@@ -265,7 +266,7 @@ void PS2_DRIVER(){
 					k->states = LsRsLaRaClNlLctRct;
 			       	        if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
 					else if(k->pR){
-						write_to_screen(&(k->ascii), 1);
+						write_to_screen((int8_t*)(&(k->ascii)), 1);
 						 WRITE(0, &(k->ascii), 1);
 					}
 			}

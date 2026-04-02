@@ -2,6 +2,7 @@
 #define _L_STD_H
 #include <stdint.h>
 uint64_t INT0x80(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx);
+void strcpy(char * to, char * from);
 void * sbrk(uint64_t size);
 #define pid_t uint64_t
 #define size_t uint64_t
@@ -34,6 +35,7 @@ void bind(FILE * a, FILE * b);
 void bindT(proc * a, FILE * b);
 void exit(int c);
 void unblock(proc * pid);
+void unblockAndWait(proc * pid);
 void outb(uint16_t port, uint8_t data);
 uint8_t inb(uint16_t port);
 FILE * fopen(const char * FILENAME, const char * OPENTYPE);

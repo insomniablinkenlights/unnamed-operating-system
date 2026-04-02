@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 #include "headers/proc.h"
 #include "headers/usermode.h"
@@ -61,19 +62,6 @@ void lock_stuff(){
 	postpone_task_switches_counter++;
 #endif
 }
-enum task_states {
-	STATE_RUNNING = 0,
-	STATE_READY,
-	STATE_WAITING = 2,
-	STATE_DEAD = 3,
-	STATE_PAUSED = 4,
-	STATE_WAITING_FOR_IRQ,
-	STATE_WAITING_FOR_PROC_UPDATE,
-	STATE_WAITING_FOR_LOCK,
-	STATE_WAITING_FOR_POKE,
-	STATE_WAITING_FOR_DEATH,
-	STATE_BURIED
-};
 uint64_t get_time_since_boot(){
 	return TIME;
 }
@@ -416,8 +404,14 @@ void sleep(uint64_t t){
 	t=t*1000000000; //TODO: broken for no fucking reason
 	nano_sleep(t);
 }
+uint64_t irqscalled = 0x0;
 void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	lock_stuff();
+	if(irqscalled&(1<<irq)){
+		irqscalled &= ~(1<<irq);
+		unlock_stuff();
+		return;
+	}
 	current_task_TCB->irq_waiting_for = irq;
 	current_task_TCB->next=irqwaiting;
 	if(timeout == 0x0){
@@ -430,6 +424,7 @@ void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	unlock_stuff();
 	block_task(STATE_WAITING_FOR_IRQ); //for some reason we never switch back!
 }
+uint64_t irqcallblock = 0x0; //UNUSED
 void unblockirq(uint8_t irq){
 	thread_control_block * next_task;
 	thread_control_block * this_task;
@@ -449,7 +444,8 @@ void unblockirq(uint8_t irq){
 		}
 	}
 	if(!haveweunblocked){
-		ERROR(ERR_HAVENT_UNBLOCKED, irq);
+		irqscalled |= (1<<irq);
+		//ERROR(ERR_HAVENT_UNBLOCKED, irq);
 	}
 	unlock_stuff();
 }
@@ -546,7 +542,7 @@ void PokeT(thread_control_block **p){
 		unblock_task(*p);
 		*p = NULL;
 	}else{
-		BREAK((uint64_t)p);
+		BREAK(0x48288);
 	}
 //	BREAK((uint64_t)FIRST_THREAD);
 //	BREAK((uint64_t)current_task_TCB);
@@ -575,7 +571,6 @@ int wait_for_procupdate(uint64_t pid, uint64_t timeout){
 }
 void unblockP(uint64_t pid){
 	thread_control_block * task = procwaiting;
-	thread_control_block * next = NULL;
 	uint64_t K = pid ^ ((uint64_t)1<<63);
 	if(pid & (uint64_t)1<<63){
 		lock_stuff();
@@ -657,6 +652,12 @@ void unblock_child(uint64_t m){
 			unblock_task(w->ch);
 		w=w->next;
 	}
+}
+void uwait(uint64_t m){ //no fucking clue how this works
+	lock_scheduler();
+	unblock_child(m);
+	waitForChildToDie();
+	unlock_scheduler();
 }
 thread_control_block * find_child_by_pid(uint64_t m){
 	TCB_CH * w = current_task_TCB->children;

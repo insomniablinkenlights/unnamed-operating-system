@@ -52,4 +52,18 @@ void unblock_task(thread_control_block * task);
 void block_task(uint8_t reason);
 void unblock_child(uint64_t m);
 thread_control_block * find_child_by_pid(uint64_t m);
+void uwait(uint64_t m);
+enum task_states {
+	STATE_RUNNING = 0,
+	STATE_READY,
+	STATE_WAITING = 2,
+	STATE_DEAD = 3,
+	STATE_PAUSED = 4,
+	STATE_WAITING_FOR_IRQ,
+	STATE_WAITING_FOR_PROC_UPDATE, //unused
+	STATE_WAITING_FOR_LOCK,
+	STATE_WAITING_FOR_POKE,
+	STATE_WAITING_FOR_DEATH,
+	STATE_BURIED
+};
 #endif

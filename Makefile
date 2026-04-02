@@ -13,33 +13,33 @@ build/%.o: %.S
 build/%.o: build/%.s
 	as $< -o $@
 
-build/chs.s: chs.c headers/stdint.h
+build/chs.s: chs.c headers/stdint.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) chs.c -S -o build/chs.s 
-build/page.s: page.c headers/stdint.h headers/addresses.h
+build/page.s: page.c headers/stdint.h headers/addresses.h headers/standard.h headers/proc.h
 	$(CC) $(CFLAGS) page.c -S -o build/page.s 
-build/malloc.s: malloc.c headers/stdint.h headers/addresses.h
+build/malloc.s: malloc.c headers/stdint.h headers/addresses.h headers/standard.h
 	$(CC) $(CFLAGS) malloc.c -S -o build/malloc.s 
-build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h
+build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h headers/standard.h headers/usermode.h
 	$(CC) $(CFLAGS) proc.c -S -o build/proc.s -Wno-pointer-arith
-build/idt.s: idt.c headers/stdint.h headers/idt.h
+build/idt.s: idt.c headers/stdint.h headers/idt.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) idt.c -S -o build/idt.s 
-build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/chs.h
+build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/chs.h headers/standard.h headers/filesystem.h headers/device.h
 	$(CC) $(CFLAGS) filesystem.c -S -o build/filesystem.s
 build/string.s: string.c headers/string.h
 	$(CC) $(CFLAGS) string.c -S -o build/string.s
-build/syscall.s: syscall.c headers/addresses.h headers/filesystem.h
+build/syscall.s: syscall.c headers/addresses.h headers/filesystem.h headers/stdint.h headers/device.h headers/usermode.h headers/proc.h headers/brk.h headers/standard.h
 	$(CC) $(CFLAGS) syscall.c -S -o build/syscall.s
-build/usermode.s: usermode.c headers/stdint.h headers/addresses.h headers/proc.h headers/filesystem.h headers/flat.h
+build/usermode.s: usermode.c headers/stdint.h headers/addresses.h headers/proc.h headers/filesystem.h headers/flat.h headers/string.h headers/brk.h headers/standard.h
 	$(CC) $(CFLAGS) usermode.c -S -o build/usermode.s
-build/flat.s: flat.c headers/flat.h headers/stdint.h headers/addresses.h
+build/flat.s: flat.c headers/flat.h headers/stdint.h headers/addresses.h headers/string.h headers/proc.h headers/brk.h headers/standard.h
 	$(CC) $(CFLAGS) flat.c -S -o build/flat.s
 build/terminal.s: terminal.c headers/addresses.h headers/stdint.h 
 	$(CC) $(CFLAGS) terminal.c -S -o build/terminal.s
-build/ps2.s: ps2.c headers/ps2.h headers/stdint.h headers/addresses.h headers/filesystem.h
+build/ps2.s: ps2.c headers/ps2.h headers/stdint.h headers/addresses.h headers/filesystem.h headers/terminal.h
 	$(CC) $(CFLAGS) ps2.c -S -o build/ps2.s
-build/pf.s: pf.c headers/stdint.h headers/addresses.h headers/proc.h headers/brk.h
+build/pf.s: pf.c headers/stdint.h headers/addresses.h headers/proc.h headers/brk.h headers/standard.h
 	$(CC) $(CFLAGS) pf.c -S -o build/pf.s
-build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h headers/usermode.h headers/addresses.h headers/terminal.h headers/string.h
+build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h headers/usermode.h headers/addresses.h headers/terminal.h headers/string.h headers/standard.h
 	$(CC) $(CFLAGS) driver.c -S -o build/driver.s
 build/sysroot/sbin/init: build/userland/init.o userland/init.ld
 	pushd build/userland && ld -T ../../userland/init.ld && mv ./init.bin ../sysroot/sbin/init && popd

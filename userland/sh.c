@@ -30,11 +30,12 @@ int main(){
 	//	bind(stdin, k->stdin); //stdin passes to k->stdin
 		//bind(k->stdout, stdout); //k->stdout passes to stdout
 		bindT(k, stdout);
-		unblock(k);
+		unblockAndWait(k);
+//asm volatile("xchgw %bx, %bx");
 		//so  k->stdio->pairout = stdio, stdio->pairin = k->stdio
 		//but we want k->stdio->pairout=stdio->pairout, stdio->pairin->pairout=k->stdio
 		//this doesn't work! we'll need to bind specifically the pairin and pairout together...
-		wait(NULL); //suspend execution until one of our children terminates
+		//wait(NULL); //suspend execution until one of our children terminates
 			//TODO: a concept of child processes
 			//after the process terminates it should return stdin and stdout to its parent
 	}

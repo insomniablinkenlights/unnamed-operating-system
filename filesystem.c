@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
 #include "headers/addresses.h"
 #include "headers/chs.h"
@@ -87,11 +88,12 @@ void InitKernelFd(){
 inode * GrabInode(uint64_t id){
 	int r = sizeof(inode);
 	int k2 = id;
-	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 512, NULL); //TODO: drive numbers
+	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 1024, NULL); //TODO: drive numbers
 								    //this reads the nth block
 										      //I THINK that read is failing to do the memcpy maybe
-	inode * addr = (inode*)(((char*)m)+r*k2); //TERRIBLE hack. WHY does imulq not work?
-						  //TODO: this breaks past 512!!!
+	inode * addr = (inode*)(((char*)m)+((r*k2)&511)); //TERRIBLE hack. WHY does imulq not work?
+	//sometimes, addr might be on the boundary of two chunks.
+	//BREAK((uint64_t)(addr->name));
 	if((void*)addr == m && id != 0){ //r*k2 == 0
 		//id != 0, sizeof != 0, id*sizeof = 0. ????
 		ERROR(ERR_INODE_NE2, k2*r);
@@ -113,10 +115,7 @@ void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
 	if((position+len)>512*n->chunklen){
 		ERROR(ERR_FILE_PASTBOUND, position);
 	}
-/*	if(len>0x200){
-		ERROR(ERR_READ_SIZE_TEMP, len);
-	}*/
-	 read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, len, buffer); //TODO: drive numbers
+	read(LBA_FS_BASE+n->chunkaddr1+DIV64_32(position,512), 0x0, len, buffer); //TODO: drive numbers
 }
 uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	//arguments[0] = inode #
@@ -128,9 +127,9 @@ uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, ui
 uint64_t FileWriterStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	inode * k =GrabInode(((uint64_t*)arguments)[0]); 
 	if(position + len < k->chunklen*0x200){
-		char * m = (char*)read(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?(len&(~0x1FF)+1):len, NULL);
+		char * m = (char*)read(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?((len&(~0x1FF))+1):len, NULL);
 		memcpy(m+position, buffer, len);
-		write(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?(len&(~0x1FF)+1):len, m);
+		write(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?((len&(~0x1FF))+1):len, m);
 	}else{
 		//we have to reallocate the inode, so like about 50% of the contents of insertFileSystem
 		ERROR(ERR_FWS_UNIMP, 0);
@@ -183,7 +182,7 @@ stdIO * stdOutBindings = NULL; //linked list similar to our malloc implementatio
 stdIO * stdInBindings = NULL;
 uint8_t stdinSetup = 0;
 stdIO * TermSP = NULL;
-uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){
+uint64_t STDOUTStream(stdIO * arguments, uint64_t UNUSED(position), void * buffer, uint64_t len){
 	stdIO * pairOut = arguments -> pairOut;
 	int toWrite = 0;
 	int WP = 0;
@@ -195,7 +194,7 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 		while(len > 0x0){
 			acquire_semaphore(arguments->bufferSema); //on interrupt, we get here, get to the end of all this, but never get back to the reader!
 			if(arguments->bufferOutEnd->datac != 255){ //we can write into the end
-				toWrite = MIN(255-arguments->bufferOutEnd->datac, len);
+				toWrite = MIN((unsigned char)(255-(char)(arguments->bufferOutEnd->datac)), len);
 				memcpy((char*)(arguments->bufferOutEnd->data)+arguments->bufferOutEnd->datac,(char*)( buffer)+WP, toWrite);
 				arguments->bufferOutEnd->datac+=toWrite;
 				WP+=toWrite;
@@ -210,13 +209,14 @@ uint64_t STDOUTStream(stdIO * arguments, uint64_t position, void * buffer, uint6
 				arguments->bufferOutEnd = arguments->bufferOutEnd->next;
 			}
 			release_semaphore(arguments->bufferSema); //this is a super tight loop, chances are we don't switch
-			PokeT((arguments->waiter)); //we go there, we clear the waiter, we return, we come back (?)
+			if(*(arguments->waiter)) PokeT((arguments->waiter)); //we go there, we clear the waiter, we return, we come back (?)
+			else nano_sleep(0x1000000);
 				      //current_task_TCB->state == STATE_READY??
 		}
 	}
 	return 0;
 }
-uint64_t STDINStream(stdIO * arguments, uint64_t position, void * buffer, uint64_t len){ //FIFO
+uint64_t STDINStream(stdIO * arguments, uint64_t UNUSED(position), void * buffer, uint64_t len){ //FIFO
 	//position is unused
 	stdIO * pairIn = arguments -> pairIn;
 	int toRead = 0;
@@ -453,6 +453,23 @@ stream * openDEV(char * name){
 	if(strcmp(name, "com"+CBASE) == 0){ //SERIAL
 	}*/
 }
+void inSO(stream * k2, stdIO * a, stdIO * b){
+	k2->arguments = malloc(sizeof(stdIO));
+	stdIO * m = k2->arguments;
+	m->pairIn = a;
+	m->pairOut = b;
+	m->bufferOut = malloc(sizeof(stdFIFOBUF));
+	m->bufferOutEnd = m->bufferOut;
+	m->bufferOut->datac = 0;
+	m->bufferOut->next = NULL;
+	m->bufferSema = create_semaphore(1);
+	m->type = 0;
+	m->waiter = malloc(sizeof(thread_control_block*));
+	*(m->waiter) = NULL;
+	k2->position = 0x0;
+	k2->flags = 0x0;
+	k2->function = StdIOStream;
+}
 stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	//   filename:    /DIR/DIR/DIR.../file or /file or /DIR/ or /DIR/DIR/
 	//   split filename into directories ... filename
@@ -559,7 +576,7 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 			}
 			l++;
 		}
-		if(p){
+		if(p!=0){
 			ERROR(ERR_IN_DIR_DNE, (uint64_t)filename);
 		}
 	//	free(curdir); 
@@ -590,7 +607,7 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 		}
 		l++;
 	}
-	if(p){
+	if(p!=0){
 		ERROR(ERR_IN_FILE_DNE,(uint64_t) name);
 	}
 	
@@ -621,9 +638,14 @@ void start_init_task(){ //why the fuck is it in here
 //		nano_sleep(0x1000000);
 //	}
 	InitKernelFd();
-	BREAK(0x888);
-	dProbe("/kmod/serial\0"+CBASE, ""+CBASE);
-	BREAK(0x999);
+	/*COM_IRQ();
+	dProbe("/kmod/serial\0"+CBASE, ""+CBASE); //this is what broke it I believe
+	uint64_t serialID = OPEN("/dev/com"+CBASE, 0);
+	BREAK(0x242);
+	WRITE(serialID, "com"+CBASE, 3);
+	BREAK(0x342);
+	while(1)nano_sleep(0x10000000);
+	CLOSE(serialID);*/
 	int m = ExecFile("/sbin/init\0"+CBASE, ""+CBASE);
 	unblock_child(m);
 	waitForChildToDie();
@@ -689,8 +711,6 @@ void giveSTDIOback(thread_control_block * recipient, thread_control_block * dono
 /*	char k = dfdn + '0';
 	write_to_screen(&k, 1);
 	if(dfd[dfdn].arguments != TermSP){
-		BREAK(0x648);
-		BREAK((uint64_t)(dfd[dfdn].arguments));
 	}*/
 	if(rfd->function != StdIOStream){ //we lost a stdio somewhere in there
 		*rfd = dfd[dfdn]; //copy the entire stream object, but now they have the same arguments!

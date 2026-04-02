@@ -4,8 +4,6 @@
 #define page_directory_address = 0x10000;
 #define CBASE 0x8000000000
 #define MBASE (CBASE+0x20000)
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
 void * KPALLOC();
 void * KPALLOCS(int64_t size);
 void * UPALLOC(uint8_t FLAGS, void * initial, int64_t size_pages);
@@ -22,6 +20,7 @@ void HLT();
 void PIC_sendEOI(uint8_t irq);
 void PIC_PS2();
 void PIC_PS2off();
+void COM_IRQ();
 void U_PFREEALL();
 int checkCorruption();
 uint32_t DIV64_32(uint64_t dd, uint32_t ds);
@@ -128,7 +127,7 @@ enum ERROR_CODES{
 	ERR_NULL_PAIROUT=0x5a,
 	ERR_FWS_UNIMP=0x5b,
 	ERR_INODE_NE2=0x5c,
+	ERR_PAGE_FAULT_PV=0x5d,
+	ERR_DRIVER_NULLFD=0x5e,
 };
-#define NULL  ((void*)0x0)
-
 #endif

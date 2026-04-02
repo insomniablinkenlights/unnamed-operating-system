@@ -36,4 +36,5 @@ typedef struct stdIO {
 	SEMAPHORE * bufferSema;
 	thread_control_block ** waiter;
 } stdIO;
+void inSO(stream * k2, stdIO * a, stdIO * b);
 #endif

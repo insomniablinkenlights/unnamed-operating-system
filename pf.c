@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
 #include "headers/addresses.h"
 #include "headers/proc.h"
@@ -9,7 +10,7 @@ void PAGE_FAULT(uint64_t virt_ad, uint64_t errc){
 //	BREAK(errc);
 	if(errc & 1){ //protection violation
 		BREAK(virt_ad);
-		ERROR(ERR_PAGE_FAULT, errc);
+		ERROR(ERR_PAGE_FAULT_PV, errc);
 	}
 	//we only want to make the page if and only if it's a section within the brk that is nonexistent due to a read or a write
 	prog_mem * brk = (prog_mem*)(current_task_TCB->brk);
@@ -21,6 +22,8 @@ void PAGE_FAULT(uint64_t virt_ad, uint64_t errc){
 		UPALLOC(2, (char*)(virt_ad&(~0xFFF)), 1);
 	}else{
 		BREAK(virt_ad);
+		BREAK(brk->start);
+		BREAK(brk->end);
 		ERROR(ERR_PAGE_FAULT, errc);
 	}
 }

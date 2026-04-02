@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
 #include "headers/string.h"
 #include "headers/addresses.h"
@@ -86,7 +87,7 @@ void * PF(void * fi, uint64_t filesize, char * arguments, int * argv){
 		((prog_mem*)(current_task_TCB->brk))->end = MAX(M->BSS_VADD+M->BSS_SIZE, (((prog_mem*)(current_task_TCB->brk))->end));
 		//UPALLOC(2, (void*)(M->BSS_VADD), MAX(1,(M->BSS_SIZE)>>12));
 	}
-	int k = strlen(arguments)+1;
+	unsigned int k = strlen(arguments)+1;
 	if(current_task_TCB->brk->start > k){
 		current_task_TCB->brk->start -= k;
 		memcpy((void*)(current_task_TCB->brk->start), arguments, k);

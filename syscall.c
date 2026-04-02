@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
 #include "headers/device.h"
 #include "headers/usermode.h"
@@ -82,7 +83,7 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			break;
 		case 0xe:
 			if(current_task_TCB->PL == 2){
-				d0xE(rsi, (void*)rdx);
+				d0xE(rsi, (void *)rdx);
 				rV = 0;
 			}else{
 				rV = -1;
@@ -91,6 +92,7 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 		case 0xf:
 			if(current_task_TCB->PL == 2){
 				wait_for_irq(rsi, 0, NULL);
+				PIC_sendEOI(rsi);
 				rV = 0;
 			}else{
 				rV = -1;
@@ -98,6 +100,14 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			break;
 		case 0x10: //check stream
 			rV = checkStream(rsi);
+			break;
+		case 0x11: //unblock and wait
+			uwait(rsi);
+			rV = 0;
+			break;
+		case 0x12:
+			nano_sleep(rsi);
+			rV = 0;
 			break;
 		default:
 			ERROR(ERR_INT, rdi);

@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 #include "headers/proc.h"
 #define PTV_MEMORYOVERHEAD 0
@@ -315,15 +316,15 @@ void * KP_ALLOC4(int64_t size_pages){
 	char * ini =(char*) MBASE;
 	int64_t s = 0;
 	while(s != size_pages){
-		if(doesPDEEExist(ini+0x1000*s)){
+		if(doesPDEEExist(ini+(s<<12))){
 			s++;
 		}else{
-			ini=ini+0x1000*s;
+			ini=ini+((s+1)<<12);
 			s=0;
 		}
 	}
 	for(s = 0; s<size_pages; s++){
-		ALSP(ini+0x1000*s, 0x0, 0x1, 0x1);
+		ALSP(ini+(s<<12), 0x0, 0x1, 0x1);
 	}
 	return ini;
 }
@@ -463,7 +464,7 @@ void U_PFREEALL(){
 	//tables need to have the memory which allocates the TABLE freed followed by the top level entry which points to the table AS a table
 	uint64_t endpdpt = (( ((uint64_t)current_task_TCB->brk->end)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9))+1;
 	uint64_t startpdpt = ( ((uint64_t)current_task_TCB->brk->start)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
-	for(int pdpt = startpdpt; pdpt<endpdpt; pdpt++){
+	for(unsigned int pdpt = startpdpt; pdpt<endpdpt; pdpt++){
 		if((get_pdptV(0, pdpt)&0x1) != 0x0){
 			for(int pde = 0; pde<512; pde++){
 				if((get_pdeV(0, pdpt, pde)&0x1) != 0x0){

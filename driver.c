@@ -1,3 +1,4 @@
+#include "headers/standard.h"
 #include "headers/device.h"
 #include "headers/proc.h"
 #include "headers/stdint.h"
@@ -18,12 +19,10 @@ void dProbe(char * name, char * argv){
 		DEVICE_LIST = KPALLOC(); //TODO: make this and kernelfd dynamic
 	}
 	uint64_t new_PID = ExecFile(name, argv);
-	BREAK(0x868);
 	thread_control_block * new_task = find_child_by_pid(new_PID);
 	new_task->PL = 0x2;
-	BREAK(0x867);
 	unblock_task(new_task);
-	BREAK(0x866);
+	block_task(STATE_WAITING_FOR_POKE);
 }
 void d0xD(char * name){
 	//streamID is currently just the int of the fd
@@ -31,11 +30,16 @@ void d0xD(char * name){
 	//dev->pid = current_task_TCB->pid;
 	//memcpy(&(DEVICE_LIST[LAST_DEVICE]), dev, sizeof(DEVICE));
 	DEVICE * K = &(DEVICE_LIST[LAST_DEVICE]);
-	K->streamID = (current_task_TCB->file_descriptors);
+	K->streamID = &(((stream*)current_task_TCB->file_descriptors)[0]);
+	if(K->streamID->function == NULL){
+		//we NEED to create a FD
+		inSO(K->streamID, NULL, NULL);
+	}
 	K->pid = current_task_TCB->pid;
 	K->DEV_NAME = malloc(strlen(name)+1);
 	memcpy(K->DEV_NAME, name, strlen(name)+1);
 	LAST_DEVICE ++; //TODO: need to bounds-check
+	unblock_task(current_task_TCB->parent);
 	//now we call the driver function with this as the argument
 	//switchToUserModeProc(dev->DRIVER_FUNCTION, 0x0); //TODO: with this as the argument...
 }
