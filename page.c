@@ -286,7 +286,7 @@ void ALSP(void * v_add, uint8_t flags, uint8_t magic1, uint8_t magic2){
 
 }
 void * UP_ALLOC4(uint8_t flags, void * initial, int64_t size_pages){
-	if(size_pages == 0) ERROR(ERR_AL_NOP, size_pages);
+	if(size_pages == 0) ERROR(ERR_UAL_NOP, size_pages);
 	if((uint64_t)(initial)+0x1000*size_pages > CBASE || (uint64_t)initial&0xfff){
 		ERROR(ERR_UPA_BIN, (uint64_t) initial);
 	}

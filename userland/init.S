@@ -13,7 +13,8 @@ mov (tty_path), %rsi
 int $0x80
 mov $sh_path, %rsi
 mov $0x7, %rdi
-mov $sh_path, %rcx
+mov $sh_path, %rdx
+mov $pd_path, %rcx
 int $0x80
 movq %rax, (sh_path)
 mov %rax, %rsi
@@ -34,6 +35,11 @@ sh_path:
 	.string "/sbin/sh"
 tty_path:
 	.string "/dev/tty"
+pd_path:
+	.quad pd2_p
+	.quad 0xF
+pd2_p:
+	.string ""
 /*L:
 xchgw %bx, %bx
 mov $open_sr, %rdx

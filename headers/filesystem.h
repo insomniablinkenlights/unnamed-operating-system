@@ -37,4 +37,17 @@ typedef struct stdIO {
 	thread_control_block ** waiter;
 } stdIO;
 void inSO(stream * k2, stdIO * a, stdIO * b);
+enum file_flags{
+	F_FG_RD = 1,
+	F_FG_WT = 2,
+	F_FG_XC = 4,
+};
+struct streamDescriptor {
+	stream * (* opener) (char * name);
+	char * arguments;
+};
+struct File{
+	void * inodeORstreamDescriptorORNULL;
+	uint8_t type;
+};
 #endif

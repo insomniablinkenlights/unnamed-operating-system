@@ -2,6 +2,7 @@
 #include "brk.h"
 #ifndef proc
 #define proc
+#include "perm.h"
 struct __attribute__((packed)) TCB_CH;
 typedef struct __attribute__((packed)) thread_control_block {
 	void * rsp; //+0
@@ -24,6 +25,7 @@ typedef struct __attribute__((packed)) thread_control_block {
 	struct thread_control_block * parent;
 	struct TCB_CH * children;
 	prog_mem * brk; //a pointer to a usermem struct!
+	struct perm_desc * perms; 
 } thread_control_block;
 typedef struct __attribute__((packed)) TCB_CH{
 	struct TCB_CH * next;
@@ -41,8 +43,7 @@ void acquire_semaphore(SEMAPHORE * semaphore);
 void release_semaphore(SEMAPHORE * semaphore);
 SEMAPHORE * create_semaphore(int max_count);
 extern thread_control_block * current_task_TCB;
-thread_control_block * create_kernel_task(void startingRIP(void));
-thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments);
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments, struct perm_desc * perms);
 void proc_relent();
 void PROC_EXIT();
 void waitForChildToDie();

@@ -1,4 +1,5 @@
 #include "stdint.h"
+#include "standard.h"
 #ifndef ps2
 #define ps2
 typedef struct __attribute__((packed)) KP{
@@ -7,7 +8,7 @@ typedef struct __attribute__((packed)) KP{
 	uint8_t pR;
 	uint8_t states;
 }KP;
-void PS2_DRIVER();
+void PS2_DRIVER(void * UNUSED(arguments));
 extern uint8_t keyboard_init;
 extern uint8_t keyboard_is_raw;
 #endif

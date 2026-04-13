@@ -121,6 +121,8 @@ void initialize_multitasking(){
 	current_task_TCB->parent = NULL;
 	current_task_TCB->children = NULL;
 current_task_TCB->brk = NULL;
+	current_task_TCB->perms = malloc(sizeof(struct perm_desc));
+	current_task_TCB->perms->t_root = NULL;
 	FIRST_THREAD=NULL;
 	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
@@ -199,11 +201,7 @@ void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Us
 		unblock_task(single_mother_of_3);
 	}
 }
-thread_control_block * create_kernel_task(void startingRIP(void)){
-	//deprecating it
-	return ckprocA((void (*) (void *))startingRIP, NULL);
-}
-thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments){
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments, struct perm_desc * perms){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
 	//lowkey i think this is the error
@@ -229,6 +227,7 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->children = NULL;
 	M->parent = NULL;
 	M->brk = NULL;
+	M->perms = perms;
 	appendChild(current_task_TCB, M);
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!

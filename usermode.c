@@ -64,16 +64,16 @@ void ExecN(void * arguments){
 //current_task_TCB->brk= (uint64_t)malloc(sizeof(prog_mem));
 //	acquire_semaphore(A->sema);
 //	BREAK((uint64_t)(A->File));
-	uint64_t AF = OPEN(A->File, 0x0); //TODO: open it with r/x
+	uint64_t AF = OPEN(A->File, F_FG_RD|F_FG_XC); //TODO: open it with r/x
 	SEEK(AF, 0, 2);
 	uint64_t AFL = TELL(AF);
 	SEEK(AF, 0, 0);
-	void * MEM = KPALLOCS(DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
+	void * MEM = KPALLOCS((AFL>>12)+((AFL&0xFFF)?1:0));
 	READ(AF, MEM, AFL);
 	int rdi;
 	void * INI = PF(MEM, AFL, A->arguments, &rdi);
 //	BREAK(0x1482);
-	P_FREES(MEM, DIV64_32(AFL,0x1000)+((AFL&0xFFF)?1:0));
+	P_FREES(MEM, (AFL>>12)+((AFL&0xFFF)?1:0));
 //	UPALLOC(0x2, (void*)0x0, AFL);
 //	READ(AF, 0x0, AFL*0x200);
 	//TODO argc and argv and shit or whatever
@@ -85,7 +85,8 @@ void ExecN(void * arguments){
 	block_task(4);
 	switchToUserModeProc(INI, rdi);
 }
-uint64_t ExecFile(char * A, char * argv){
+#include "headers/perm.h"
+uint64_t ExecFile(char * A, char * argv, struct perm_desc * perms){
 	thread_control_block * new = NULL;
 	struct ExecArgsInternal * newArgs = malloc(sizeof(struct ExecArgsInternal));
 	newArgs->File = malloc(strlen(A)+1);
@@ -94,7 +95,7 @@ uint64_t ExecFile(char * A, char * argv){
 	memcpy(newArgs->arguments, argv, strlen(argv)+1);
 	newArgs->sema = create_semaphore(1); 
 	newArgs->done = 0;
-	new = ckprocA(ExecN, newArgs);
+	new = ckprocA(ExecN, newArgs, perms);
 	while(1){ //this loops until execn grabs the sema
 	//	acquire_semaphore(newArgs->sema);
 		if(newArgs->done == 1){

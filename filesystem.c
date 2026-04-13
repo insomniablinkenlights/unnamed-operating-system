@@ -9,6 +9,14 @@
 #include "headers/string.h"
 #include "headers/usermode.h"
 #include "headers/device.h"
+#include "headers/filesystem_internal.h"
+#include "headers/perm.h"
+#define LBA_FS_BASE 108
+//DO NOT leave it at 0.
+#define kernelFd ((stream*)(current_task_TCB->file_descriptors))
+#define kernelFdLen (current_task_TCB->kernelFdLen)
+#define root ((inode*)(current_task_TCB->perms->t_root))
+
 uint64_t * read(uint64_t LBA, uint64_t disk, uint16_t len, void * m){
 	//TODO: drive numbers, len > 0x1000, queue?
 	if(disk != 0x0){
@@ -38,29 +46,6 @@ void write(uint64_t LBA, uint64_t disk, uint16_t len, void * data){
 		floppy_write(LBA+i, len, (char*)data+512*i, disk);
 	}
 }
-#define LBA_FS_BASE 108
-//DO NOT leave it at 0.
-typedef struct __attribute__((packed)) inode {
-	uint64_t chunkaddr1; //chunksize 4kb
-	uint64_t chunklen;
-	uint16_t perms;
-	uint8_t owner;
-	uint8_t group;
-	uint64_t timestamp; //nanoseconds after jan 1 1970
-	char name[32];
-}inode; //filename is at the beginning of file and terminated with \0
-  //directories have perm bit 0x8 =1, and are lists of 64-bit inode numbers terminated with 0x0
-void format(){ //moved into an external file
-}
-//and now a function that reads the file into a buffer
-//we'll implement IO as streams like in unix
-// [MOVED INTO HEADERS/FILESYSTEM.H]
-//which gives you a uint64_t function(void * arguments, uint64_t position, void * buffer, uint64_t len)
-//every process has a fd table, where every fd maps to a stream for reading and/or a stream for writing
-//for now we'll just have ONE FD for every kernel task
-#define kernelFd ((stream*)(current_task_TCB->file_descriptors))
-#define kernelFdLen (current_task_TCB->kernelFdLen)
-inode * root = NULL;
 uint64_t kernelFdLastClosed = 0x0;
 inode * GrabInode(uint64_t id);
 void CloseAllFds(){
@@ -77,7 +62,7 @@ void InitKernelFd(){
 	kernelFdLastClosed=0x0;
 	kernelFdLen=DIV64_32(0x1000,sizeof(stream));
 	if(root == NULL){
-		root = GrabInode(0x0); //broken here! multitasking?
+		current_task_TCB->perms = cPD(0xFF, GrabInode(0x0)); //this is fundamentally insecure :3
 	}
 	OpenStdIn();
 }
@@ -88,6 +73,7 @@ void InitKernelFd(){
 inode * GrabInode(uint64_t id){
 	int r = sizeof(inode);
 	int k2 = id;
+	//k2 at some point gets extremely big!
 	void * m = read(LBA_FS_BASE+ DIV64_32(r*k2,512), 0x0, 1024, NULL); //TODO: drive numbers
 								    //this reads the nth block
 										      //I THINK that read is failing to do the memcpy maybe
@@ -119,13 +105,12 @@ void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
 }
 uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
 	//arguments[0] = inode #
-	inode * k =GrabInode(((uint64_t*)arguments)[0]); 
+	inode * k =((void**)arguments)[0]; 
 	InodeRead(k, position, buffer, len);
-	free(k);
 	return position+len;
 }
 uint64_t FileWriterStream(void * arguments, uint64_t position, void * buffer, uint64_t len){
-	inode * k =GrabInode(((uint64_t*)arguments)[0]); 
+	inode * k =((void**)arguments)[0]; 
 	if(position + len < k->chunklen*0x200){
 		char * m = (char*)read(LBA_FS_BASE+k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?((len&(~0x1FF))+1):len, NULL);
 		memcpy(m+position, buffer, len);
@@ -148,9 +133,9 @@ uint64_t FileStream(void * arguments, uint64_t position, void * buffer, uint64_t
 		free(arguments);	
 		return 0x0;
 	}else if(rw == 0x3){
-		inode * k = GrabInode(((uint64_t*)arguments)[0]);
-		uint64_t len = k->chunklen*0x200;
-		free(k);
+		//inode * k = GrabInode(((uint64_t*)arguments)[0]);
+		inode * k = ((inode**)arguments)[0];
+		uint64_t len = k->chunklen<<9;
 		return len;
 	}else {
 		ERROR(ERR_FILESTREAM_RW,rw);
@@ -301,43 +286,7 @@ uint64_t OpenStdIn(){ //literally doesn't open stdin
 		//bind TermSP to PS2_DRIVER? Will need to do this in some kinda exec()?
 	}
 	return 0;
-	/*stream * m = malloc(sizeof(stream));
-	m->function = StdIOStream;
-	m->arguments = malloc(sizeof(stdIO));
-	((stdIO*)(m->arguments)) -> pairIn= NULL;
-	((stdIO*)(m->arguments)) -> pairOut= NULL;
-	//((stdIO*)(m->arguments)) -> pairOut= TermSP; //should be NULL unless another process tries to bind to us... idk yet
-	((stdIO*)(m->arguments)) -> bufferOut= malloc(sizeof(stdFIFOBUF));
-	((stdIO*)(m->arguments)) -> bufferOutEnd= ((stdIO*)(m->arguments))->bufferOut;
-	((stdIO*)(m->arguments)) -> bufferOut->datac=0;
-	((stdIO*)(m->arguments)) -> bufferOut->next=NULL;
-	((stdIO*)(m->arguments)) -> bufferSema = create_semaphore(1);
-	((stdIO*)(m->arguments)) -> type= 0; //normal process
-	((stdIO*)(m->arguments)) -> waiter = malloc(sizeof(thread_control_block*));
-	*((((stdIO*)m->arguments))->waiter) = NULL;
-	m->position = 0x0;
-	m->flags = 0x0;
-	if(kernelFd[0].function != NULL){
-		ERROR(ERR_STDIO_NONZ, 0);
-	}
-	while(kernelFdLastClosed<kernelFdLen && kernelFd[kernelFdLastClosed].function != NULL){
-		kernelFdLastClosed++;
-	}
-	if(kernelFdLastClosed == kernelFdLen){
-		kernelFdLastClosed = 0x0;
-		while(kernelFdLastClosed<kernelFdLen && kernelFd[kernelFdLastClosed].function != NULL){
-			kernelFdLastClosed++;
-		}
-		if(kernelFdLastClosed == kernelFdLen){
-			ERROR(ERR_FD_TOOHIGH, kernelFdLastClosed);
-		}
-	}
-	memcpy(kernelFd+kernelFdLastClosed, m, sizeof(stream));
-	free(m);
-	return kernelFdLastClosed;*/
-
 }
-stream * OpenFilename(inode * basedir, char * filename, uint64_t flags);
 int checkStream(uint64_t fd){
 	if(fd>DIV64_32(0x1000,sizeof(stream))){
 		ERROR(ERR_FD_TOOHIGH, fd);
@@ -394,8 +343,28 @@ uint64_t TELL(uint64_t fd){
 	}
 	return kernelFd[fd].position;
 }
+struct File * openFilename(const char * name);
 uint64_t OPEN(char * filename, uint64_t flags){
-	stream * m = OpenFilename(root, filename, flags);
+	struct File * o = openFilename(filename);
+	stream * m;
+	if(o->type == 0){
+		ERROR(ERR_TODO_PROC_ERR,0);
+	}else if(o->type == 1){
+		struct streamDescriptor * osd = (struct streamDescriptor*)(o->inodeORstreamDescriptorORNULL);
+		m = osd->opener(osd->arguments); //I don't like this line of code.
+	}else{
+		//if(!checkFPL(o->F_PL, flags)){
+		//	ERROR(ERR_TODO_PROC_ERR,0);
+		//}
+		m = malloc(sizeof(stream));
+		m->arguments = malloc(sizeof(uint64_t));
+		((void**)m->arguments)[0] = o->inodeORstreamDescriptorORNULL;
+		m->position = 0x0;
+		m->function = FileStream;
+		m->flags = flags;
+
+	}
+	
 	while(kernelFdLastClosed<kernelFdLen && kernelFd[kernelFdLastClosed].function != NULL){
 		kernelFdLastClosed++;
 	}
@@ -470,7 +439,48 @@ void inSO(stream * k2, stdIO * a, stdIO * b){
 	k2->flags = 0x0;
 	k2->function = StdIOStream;
 }
-stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
+struct streamDescriptor * getStreamDescriptor(const char * name){
+	int i = strlen(name);
+	while(name[i] != '/' && i>0) i--;
+	if(i!=0)i++;
+#ifdef rootstreams
+	int ex = 0;
+	//A rootstream list would be the list of streams allowed to be accessed from the process.
+	for(int k = 0; rootstreams[k]; k++){
+		if(strcmp(name+i, rootstreams[k]) == 0){
+			ex =1;
+			 break;
+		}
+	}
+	if(ex == 0) return NULL;
+#endif
+	struct streamDescriptor * b = malloc(sizeof(struct streamDescriptor));
+	b->arguments = malloc(strlen(name+i)+1);
+	strcpy(b->arguments,name+i);
+	b->opener = openDEV;//TEMPORARY
+	return b;
+}
+struct File * openFilename(const char * name){
+	void * target;
+	struct File * k = malloc(sizeof(struct File));
+	target = getFileFromFilename(root, name);
+	if(!target){
+		target = getStreamDescriptor(name);
+		if(target){
+			k->type = 1;
+		}
+		else{
+			BREAK((uint64_t)name);
+			k->type = 0;
+		}
+	}
+	else{
+		k->type = 2;
+	}
+	k->inodeORstreamDescriptorORNULL = target;
+	return k;
+}
+inode * getFileFromFilename(inode * basedir, const char * filename){
 	//   filename:    /DIR/DIR/DIR.../file or /file or /DIR/ or /DIR/DIR/
 	//   split filename into directories ... filename
 	// TODO: fix malloc and free here
@@ -485,13 +495,17 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	char * FN2 = NULL;
 	FN2++;
 	if(FN2 != NULL+1){ //genuinely why the FUCK does this work
-		ERROR(ERR_OPEN_TWO, (uint64_t)FN2);
+		//ERROR(ERR_OPEN_TWO, (uint64_t)FN2);
+		return NULL;
 	}
 	while(filename[i] != 0x0){
 		if(filename[i] == '/'){
 			slashcount++;
 			while(filename[i] == '/')i++;
-			if(filename[i] == 0x0) ERROR(ERR_FILE_DIRSTREAM, (uint64_t)filename);
+			if(filename[i] == 0x0){
+			//	 ERROR(ERR_FILE_DIRSTREAM, (uint64_t)filename);
+				return NULL;
+			}
 		}else{
 			i++;
 		}
@@ -515,13 +529,15 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 			while(filename[i] != '/'){
 				i++;
 				if(filename[i] == '\0'){
-					ERROR(ERR_FILE_OPEN_SLASHCOUNT, 0x0);
+		//			ERROR(ERR_FILE_OPEN_SLASHCOUNT, 0x0);
+					return NULL;
 				}
 			}
 			directories[j] = malloc(i-k+1);
 			while(l<i){
 				if(l-k < 0){
-					ERROR(ERR_FILE_OPEN_WHY, 0x0);
+		//			ERROR(ERR_FILE_OPEN_WHY, 0x0);
+					return NULL;
 				}
 				directories[j][l-k] = filename[l];
 				l++;
@@ -540,13 +556,15 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	memcpy(name, filename+i, e-i+1); //TODO: fencepost?
 	name[e-i] = 0x0; //for some reason it's not doing it
 	if(strcmp(name, filename+i)){
-		ERROR(ERR_SPLIT_FAIL, (uint64_t)name);
+		//ERROR(ERR_SPLIT_FAIL, (uint64_t)name);
+		return NULL;
 	}
-	if(slashcount != 0x0){
+	/*if(slashcount != 0x0){
 		if(strcmp(directories[0], "dev" +CBASE) == 0){ //we have a device in /dev
+								//TODO: this breaks isolation
 			return openDEV(name);
 		}
-	}
+	}*/
 //	name ++; //if this fixes it i will die
 	// scan through all files in basedir, find one with correct name, repeat
 
@@ -577,7 +595,8 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 			l++;
 		}
 		if(p!=0){
-			ERROR(ERR_IN_DIR_DNE, (uint64_t)filename);
+		//	ERROR(ERR_IN_DIR_DNE, (uint64_t)filename);
+			return NULL;
 		}
 	//	free(curdir); 
 					//IM no longer freeing shit to stop this fuck ass double free
@@ -586,7 +605,8 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	}
 
 	if(strcmp(name, filename+i)){
-		ERROR(ERR_SPLIT_FAIL, (uint64_t)name);
+		//ERROR(ERR_SPLIT_FAIL, (uint64_t)name);
+		return NULL;
 	}
 	//finally, find the entry in our CURDIR which contains the thingy
 	k = 0;
@@ -608,16 +628,19 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 		l++;
 	}
 	if(p!=0){
-		ERROR(ERR_IN_FILE_DNE,(uint64_t) name);
+	//	ERROR(ERR_IN_FILE_DNE,(uint64_t) name);
+		return NULL;
 	}
 	
-	stream * k2 = malloc(sizeof(stream));
+//	BREAK(0x444);
+//	BREAK((uint64_t)n);
+	/*stream * k2 = malloc(sizeof(stream));
 	k2->arguments = malloc(sizeof(uint64_t));
 	((uint64_t*)k2->arguments)[0]=((uint64_t*)m)[l];
 	k2->position = 0x0;
 	k2->function = FileStream;
 	k2->flags = flags;
-
+*/
 	P_FREE(m);
 //	P_FREE(m2);
 /*	for(;slashcount>1;slashcount--){
@@ -627,17 +650,17 @@ stream * OpenFilename(inode * basedir, char * filename, uint64_t flags){
 	free(name);
 	if(curdir != basedir)free(curdir);
 	if(n!=NULL)free(n);*/
-	return k2;
+	return n;
 }
 void start_init_task(){ //why the fuck is it in here
-	create_kernel_task(PS2_DRIVER);
+	InitKernelFd();
+	ckprocA(PS2_DRIVER,0,cPD(0xFF, root));
 	while(keyboard_init == 0x0){
 		nano_sleep(0x1000000); //TODO: poke
 	}
 //	while(1){ //just let the driver do its stuff
 //		nano_sleep(0x1000000);
 //	}
-	InitKernelFd();
 	/*COM_IRQ();
 	dProbe("/kmod/serial\0"+CBASE, ""+CBASE); //this is what broke it I believe
 	uint64_t serialID = OPEN("/dev/com"+CBASE, 0);
@@ -646,7 +669,8 @@ void start_init_task(){ //why the fuck is it in here
 	BREAK(0x342);
 	while(1)nano_sleep(0x10000000);
 	CLOSE(serialID);*/
-	int m = ExecFile("/sbin/init\0"+CBASE, ""+CBASE);
+	int m = ExecFile("/sbin/init\0"+CBASE, ""+CBASE, cPD(0xFF, root));
+	
 	unblock_child(m);
 	waitForChildToDie();
 	ERROR(ERR_DEADCODE,1);
@@ -655,7 +679,7 @@ void start_init_task(){ //why the fuck is it in here
 	READ(id, UPALLOC(0x0), 0x200); //current segfault: attempting to read into user territory
 	asm volatile("xchgw %bx, %bx; xchgw %bx, %bx");	*/
 }
-uint8_t VERIFY_FLAGS(uint64_t rdx){
+uint64_t VERIFY_FLAGS(uint64_t rdx){
 	return rdx&0xff; //does NOT verify shit
 }
 void BIND_T_STDIO(thread_control_block * A, uint64_t FD0, thread_control_block * B, uint64_t FD1){

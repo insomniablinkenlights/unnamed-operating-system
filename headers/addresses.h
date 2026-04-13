@@ -34,16 +34,16 @@ void nano_sleep(uint64_t t);
 void lIOPL(uint64_t no);
 void ERROR(uint64_t code, uint64_t type);
 enum ERROR_CODES{
-	ERR_FSC = 0,
-	ERR_FSC2 = 1,
-	ERR_FSC3 = 2,
-	ERR_FSC4 = 3,
-	ERR_FSCUNIMP = 4,
-	ERR_WFIRQ = 5,
-	ERR_FVNS = 6,
-	ERR_FRLX = 7,
-	ERR_FDC_INUSE = 8,
-	ERR_INODE_NE = 9,
+	ERR_FSC = 0x0,
+	ERR_FSC2 = 0x1,
+	ERR_FSC3 = 0x2,
+	ERR_FSC4 = 0x3,
+	ERR_FSCUNIMP = 0x4,
+	ERR_WFIRQ = 0x5,
+	ERR_FVNS = 0x6,
+	ERR_FRLX = 0x7,
+	ERR_FDC_INUSE = 0x8,
+	ERR_INODE_NE = 0x9,
 	ERR_FILE_PASTBOUND = 0xa,
 	ERR_READ_SIZE_TEMP = 0xb,
 	ERR_FILE_DIRSTREAM = 0xc,
@@ -129,5 +129,7 @@ enum ERROR_CODES{
 	ERR_INODE_NE2=0x5c,
 	ERR_PAGE_FAULT_PV=0x5d,
 	ERR_DRIVER_NULLFD=0x5e,
+	ERR_TODO_PROC_ERR=0x5f,
+	ERR_UAL_NOP=0x60,
 };
 #endif

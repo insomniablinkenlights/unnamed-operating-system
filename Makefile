@@ -6,7 +6,7 @@ floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/sbin/init
 	dd if="build/Kernel.bin" of=floppya.img conv=notrunc
 	chmod +x build/insertFileSystem.out
 	cd build && ./insertFileSystem.out
-build/Kernel.bin: build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
+build/Kernel.bin: build/perm.o build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
 	cd build && ld -T ../test.ld
 build/%.o: %.S
 	as $< -o $@
@@ -41,6 +41,8 @@ build/pf.s: pf.c headers/stdint.h headers/addresses.h headers/proc.h headers/brk
 	$(CC) $(CFLAGS) pf.c -S -o build/pf.s
 build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h headers/usermode.h headers/addresses.h headers/terminal.h headers/string.h headers/standard.h
 	$(CC) $(CFLAGS) driver.c -S -o build/driver.s
+build/perm.s: perm.c headers/perm.h headers/standard.h headers/addresses.h
+	$(CC) $(CFLAGS) perm.c -S -o build/perm.s
 build/sysroot/sbin/init: build/userland/init.o userland/init.ld
 	pushd build/userland && ld -T ../../userland/init.ld && mv ./init.bin ../sysroot/sbin/init && popd
 build/sysroot/sbin/sh: build/userland/sh.o build/userland/crt0.o build/userland/int.o build/userland/libc.o userland/stdlib.h userland/sh.ld

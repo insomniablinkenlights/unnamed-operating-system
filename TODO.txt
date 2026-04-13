@@ -1,51 +1,13 @@
-We're getting spurious IRQs in the serial driver. If bit 0 is the 'fake irq' bit, then why does it not clear?
+i should move to unions in some of the internal filesystem structs
+i should also fix the makefile headers
+
+so we'll have rootstreams
+todo: prevent two processes from opening same inode at once
+todo: make write calls able to resize inodes
+
+kernel buffering
 
 
-
-
-
-problem is that we get the IRQ too fast after enabling interrupts in the register. in order to prevent this, i need to make irqs queue. wfirq should check if an interrupt has been ignored, and if so just ret. this may cause issues with the ps/2 and floppy drivers?
-
-
-we are NOT getting the IRQ.
-serial works FINE until we get to the wfirq. for some reason we never make it to after it.
-we POKE a NULL task -- probably when we try to write to it but it's not trying to read.
-
-
-
-we DO open /dev/com, but then we FD NF
-it returns 0x800020e000 (FD 00)
-function is unset! this means DEVICE_LIST[i].streamID->function is also unset.
-
-
-
-
-
-
-error fixed, now I just need to find out what the problem is with the SERIAL driver
-it pf's on 8667, which is outside the sbrk or maybe the sbrk doesn't exist!
-
-
-
-the BRK doesn't exist. the memory region does not either. how are we running user code with no memory allocated???
-it's not in the WFIRQ... or is it?
-it occurs in the CALL to WFIRQ!
-
-
-
-in malloc, we mov edx to (rdx) and it segfaults because rdx is too high
-break on 5a9 next time
-we were in L43 which JMPs to L48
-L43 is the default case for switch(s2)
-JMPing to L48 means that we have mp && *mp
-I think it's an overflow!
-
-bug symptoms: we try to switch to echo, get as far as a malloc I think, and then attempt to access some bogus all F memory. This only happens when serial is enabled.
-we do NOT sbrk in the malloc!
-
-
-arguments DONE
-I've created a duct tape solution to the whole /dev thing, but I need to make processes NOT open an stdIO by default DONE
 disk scanning
 abstraction over inode
 	file cache
@@ -55,17 +17,5 @@ close stdios and streams and shit when a prockses clsoerns
 	hack done-ish
 figure out /dev so we can do /dev/tty or /dev/com or whatnot
 	hack done: made a stub for if the directory is /dev
-userland driver interface
-	we need like a way to make an abstract 'driver' and have a list of drivers
-	first I think I should phase out termsp
-	the error system needs to be revamped...
-make processes unbound to terminals by default
-	termSP was always a little bit of a hack, it'll be better to have init just open /dev/tty0
-figure out if unix or posix has a checkstream
-	IT DOESN'T -- it's normally done in parallel i assume
-	this is only a problem because we'll catch fire in the serial driver on a read, figure out a better way to do this?
-figure out stream TYPE
-	- unify serial and ps/2
-check if serial works
 user privs, directories
 process errors

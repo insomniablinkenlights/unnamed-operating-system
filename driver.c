@@ -18,7 +18,7 @@ void dProbe(char * name, char * argv){
 		LAST_DEVICE = 0;
 		DEVICE_LIST = KPALLOC(); //TODO: make this and kernelfd dynamic
 	}
-	uint64_t new_PID = ExecFile(name, argv);
+	uint64_t new_PID = ExecFile(name, argv, current_task_TCB->perms);
 	thread_control_block * new_task = find_child_by_pid(new_PID);
 	new_task->PL = 0x2;
 	unblock_task(new_task);

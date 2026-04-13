@@ -46,8 +46,8 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			rV = TELL(rsi);
 			break;
 		case 0x7: //exec
-			//for this, arguments need to be added to cktask?
-			rV = ExecFile(VERIFY_USER((void*)rsi), VERIFY_USER((void*)rdx)); //TODO: verify file
+			rV = ExecFile(VERIFY_USER((void*)rsi), VERIFY_USER((void*)rdx), VERIFY_PERMS_EXEC((void*)rcx)); //TODO: verify file
+			//we want to verify that we can execute the file, and get the perms that we'll be giving it.
 			break;
 		case 0x8: //bind
 			BIND_HANDLES(rsi, rdx);

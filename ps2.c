@@ -176,7 +176,7 @@ uint8_t KMI = 0;
 uint8_t KeyMap(uint8_t keycode, uint8_t mods){
 	if(!KMI){
 		KM = KPALLOC();
-		uint64_t m = OPEN("/etc/keymap"+CBASE, 0x3);
+		uint64_t m = OPEN("/etc/keymap"+CBASE, F_FG_RD);
 		READ(m, KM, 0x200); //512 bytes == four layers
 				     //layers: 0, shift, right alt, shift + right alt
 		CLOSE(m);
@@ -190,7 +190,7 @@ uint8_t KeyMap(uint8_t keycode, uint8_t mods){
 }
 uint8_t keyboard_init = 0x0;
 uint8_t keyboard_is_raw = 0x1;
-void PS2_DRIVER(){
+void PS2_DRIVER(void * UNUSED(arguments)){
 	//to output we'll use WRITE(0, &k, sizeof(KP));
 	uint8_t LsRsLaRaClNlLctRct = 0; //states obviously
 	uint8_t b1 = 0;
@@ -266,7 +266,7 @@ void PS2_DRIVER(){
 					k->states = LsRsLaRaClNlLctRct;
 			       	        if(keyboard_is_raw) WRITE(0, k, sizeof(KP));	       
 					else if(k->pR){
-						write_to_screen((int8_t*)(&(k->ascii)), 1);
+						write_to_screen((char*)(&(k->ascii)), 1);
 						 WRITE(0, &(k->ascii), 1);
 					}
 			}

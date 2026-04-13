@@ -14,6 +14,7 @@ extern FILE * stdin;
 extern FILE * stdout;
 typedef struct proc{
 	pid_t pid;
+	void * pd;
 	FILE stdin;
 	FILE stdout;
 }proc;

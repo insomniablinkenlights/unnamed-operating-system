@@ -16,11 +16,6 @@ typedef struct FILE{
 }FILE;
 FILE * stdin;
 FILE * stdout;
-typedef struct proc{
-	pid_t pid;
-	FILE stdin;
-	FILE stdout;
-}proc;
 size_t strlen(const char * a){
 	size_t i = 0;
 	while(a[i])i++;
@@ -72,10 +67,14 @@ char *fgets (char * __s, int __n, FILE *__stream){ //get a newline terminated st
 	} 
 	return __s;
 }
-
+#include "../headers/umperm.h"
 proc * execv(const char *__path, char *const __argv[]){
 	proc * k = malloc(sizeof(proc)); //TODO: concat argv
-	k->pid = INT0x80(7, (uint64_t)__path, (uint64_t)(__argv[0]), 0);
+	struct Pdesc * m = malloc(sizeof(struct Pdesc));
+	k->pd = m;
+	m->chrootfname = "";
+	m->PM = 0xF;
+	k->pid = INT0x80(7, (uint64_t)__path, (uint64_t)(__argv[0]), (uint64_t)m);
 	return k;
 }
 pid_t wait(int * __stat_loc){
