@@ -1,3 +1,14 @@
+we have EIGHT HUNDRED LOC in fs.c. This is terrible. 90% of the OS is the filesystem.
+additionally, development times are stunted by the amount of time debugging takes.
+if we had a userspace stub for a lot of OS calls (e.g. KPALLOC and so on) we could debug faster and fix memory leaks!
+
+os needs implementations of a lot of library calls detailed in ifs/main, additionally dirent
+	it's a bit of a catch-22 considering that writing things needs support for writing things
+better filesystem support ---
+code duplication between IFS and FSC
+I think the best thing to do here is move the FS support out of FS.c and merge it with some of the structures in insert. In order to do that I think I want to first port IFS to run on the OS too.
+
+
 i should move to unions in some of the internal filesystem structs
 i should also fix the makefile headers
 

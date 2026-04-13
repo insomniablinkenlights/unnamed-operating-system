@@ -350,15 +350,15 @@ uint64_t OPEN(char * filename, uint64_t flags){
 	if(o->type == 0){
 		ERROR(ERR_TODO_PROC_ERR,0);
 	}else if(o->type == 1){
-		struct streamDescriptor * osd = (struct streamDescriptor*)(o->inodeORstreamDescriptorORNULL);
-		m = osd->opener(osd->arguments); //I don't like this line of code.
+		struct streamDescriptor * osd = o->content.sd;
+		m = osd->opener(osd->arguments);
 	}else{
 		//if(!checkFPL(o->F_PL, flags)){
 		//	ERROR(ERR_TODO_PROC_ERR,0);
 		//}
 		m = malloc(sizeof(stream));
 		m->arguments = malloc(sizeof(uint64_t));
-		((void**)m->arguments)[0] = o->inodeORstreamDescriptorORNULL;
+		((void**)m->arguments)[0] = o->content.in;
 		m->position = 0x0;
 		m->function = FileStream;
 		m->flags = flags;
@@ -467,6 +467,7 @@ struct File * openFilename(const char * name){
 	if(!target){
 		target = getStreamDescriptor(name);
 		if(target){
+			k->content.sd = target;
 			k->type = 1;
 		}
 		else{
@@ -475,9 +476,9 @@ struct File * openFilename(const char * name){
 		}
 	}
 	else{
+		k->content.in = target;
 		k->type = 2;
 	}
-	k->inodeORstreamDescriptorORNULL = target;
 	return k;
 }
 inode * getFileFromFilename(inode * basedir, const char * filename){

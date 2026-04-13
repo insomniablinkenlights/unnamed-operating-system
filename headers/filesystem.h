@@ -42,12 +42,4 @@ enum file_flags{
 	F_FG_WT = 2,
 	F_FG_XC = 4,
 };
-struct streamDescriptor {
-	stream * (* opener) (char * name);
-	char * arguments;
-};
-struct File{
-	void * inodeORstreamDescriptorORNULL;
-	uint8_t type;
-};
 #endif

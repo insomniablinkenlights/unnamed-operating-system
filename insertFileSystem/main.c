@@ -1,3 +1,31 @@
+/*stuff used:
+	- fopen
+	- printf
+	- fseek
+		- SEEK_SET
+		- SEEK_END
+	- fwrite
+	- ftell
+	- fclose
+	- calloc
+	- stat
+	- fread
+	- free
+	- memcpy
+	- S_ISREG
+	- realloc
+	- memset
+	- string.h
+		- strcat
+		- strrchr
+		- strcmp
+		- strcpy
+		- strncpy
+	- dirent.h
+		- opendir
+		- readdir
+		- closedir
+*/
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>

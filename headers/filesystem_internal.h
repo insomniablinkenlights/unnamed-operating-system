@@ -12,4 +12,16 @@ typedef struct __attribute__((packed)) inode {
 	char name[32];
 }inode;
 inode * getFileFromFilename(inode * basedir, const char * filename);
+struct streamDescriptor {
+	stream * (*opener) (char * name);
+	char * arguments;
+};
+union File_u {
+	inode * in;
+	struct streamDescriptor * sd;
+};
+struct File{
+	union File_u content;
+	uint8_t type;
+};
 #endif
