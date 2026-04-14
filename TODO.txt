@@ -1,3 +1,4 @@
+let's name the filesystem real quick: QFS (Quick FS), not for speed but for how fast it is to write code for it!
 we have EIGHT HUNDRED LOC in fs.c. This is terrible. 90% of the OS is the filesystem.
 additionally, development times are stunted by the amount of time debugging takes.
 if we had a userspace stub for a lot of OS calls (e.g. KPALLOC and so on) we could debug faster and fix memory leaks!

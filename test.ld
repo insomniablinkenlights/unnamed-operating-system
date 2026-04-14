@@ -33,6 +33,8 @@ SECTIONS
 			pf.o (.text)
 			driver.o (.text)
 			perm.o (.text)
+			qfs.o (.text)
+			chs_qfs_if.o (.text)
 		_KERNEL_END_ = .;
 		_KERNEL_SECTORS = ABSOLUTE(.-0x8000007c00)/0x200;
 		/*. = ALIGN(0x1000);

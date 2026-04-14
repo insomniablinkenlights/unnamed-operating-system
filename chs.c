@@ -4,7 +4,7 @@
 void lba_2_chs(uint32_t lba, uint8_t* cyl, uint8_t* head, uint8_t* sector){
 	*cyl = (char)DIV64_32(lba,(36));
 	*head = (char)DIV64_32(MOD64_32(lba, 36), 18);
-	*sector = (char)(MOD64_32(MOD64_32(lba, 36),18) +1);
+	*sector = (char)(MOD64_32(lba,18) +1);
 }
 /* i think we should uuse ISA DMA (!= PCI DMA) instead of PIO
  * - set up DMA channel 2 (total transfer bytecount -1, target buffer physical address, transfer direction)
@@ -110,13 +110,13 @@ void FLOPPY_SEND_COMMAND(uint8_t cmd, uint8_t * param1, uint8_t *param1l, uint8_
 	//while(inb(MAIN_STATUS_REGISTER)&0x10){}
 	
 	if((cmd&(~0x40)) == READ_DATA || (cmd&(~0x40)) == WRITE_DATA){ 
-	       	wait_for_irq(0x06, 3000000000, &wffi_err);
-	//	PIC_sendEOI(0x06);
+	       	wait_for_irq(0x06, 0, &wffi_err);
+		PIC_sendEOI(0x06);
 //	outb(DATA_FIFO, SENSE_INTERRUPT);
 	}
 	else if(cmd == RECALIBRATE){ 
 		wait_for_irq(0x06, 3000000000, &wffi_err);
-	//	PIC_sendEOI(0x06);
+		PIC_sendEOI(0x06);
 	}
 	//else{
 	timeout=1000;
@@ -148,7 +148,8 @@ void floppy_ctrlrs(){
 	outb(DIGITAL_OUTPUT_REGISTER, 0x0);
 	nano_sleep(4000);
 	outb(DIGITAL_OUTPUT_REGISTER, dor);
-	wait_for_irq(0x06, 10000000, &wffi_err);
+	wait_for_irq(0x06, 3000000000, &wffi_err);
+	PIC_sendEOI(0x06);
 	uint8_t  *aa=malloc(2);
 	aa[0] = 8<<4|0;
 	aa[1] = 5<<1;

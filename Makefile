@@ -6,7 +6,7 @@ floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/sbin/init
 	dd if="build/Kernel.bin" of=floppya.img conv=notrunc
 	chmod +x build/insertFileSystem.out
 	cd build && ./insertFileSystem.out
-build/Kernel.bin: build/perm.o build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
+build/Kernel.bin: build/chs_qfs_if.o build/qfs.o build/perm.o build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
 	cd build && ld -T ../test.ld
 build/%.o: %.S
 	as $< -o $@
@@ -23,7 +23,7 @@ build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h headers
 	$(CC) $(CFLAGS) proc.c -S -o build/proc.s -Wno-pointer-arith
 build/idt.s: idt.c headers/stdint.h headers/idt.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) idt.c -S -o build/idt.s 
-build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/chs.h headers/standard.h headers/filesystem.h headers/device.h
+build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/standard.h headers/filesystem.h headers/device.h headers/perm.h headers/filesystem_internal.h headers/qfs.h
 	$(CC) $(CFLAGS) filesystem.c -S -o build/filesystem.s
 build/string.s: string.c headers/string.h
 	$(CC) $(CFLAGS) string.c -S -o build/string.s
@@ -43,6 +43,10 @@ build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h header
 	$(CC) $(CFLAGS) driver.c -S -o build/driver.s
 build/perm.s: perm.c headers/perm.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) perm.c -S -o build/perm.s
+build/qfs.s: qfs.c headers/standard.h headers/filesystem_internal.h headers/stdint.h headers/addresses.h headers/chs_qfs.h headers/string.h
+	$(CC) $(CFLAGS) qfs.c -S -o build/qfs.s
+build/chs_qfs_if.s: chs_qfs_if.c headers/addresses.h headers/stdint.h headers/standard.h headers/chs.h headers/chs_qfs.h
+	$(CC) $(CFLAGS) chs_qfs_if.c -S -o build/chs_qfs_if.s
 build/sysroot/sbin/init: build/userland/init.o userland/init.ld
 	pushd build/userland && ld -T ../../userland/init.ld && mv ./init.bin ../sysroot/sbin/init && popd
 build/sysroot/sbin/sh: build/userland/sh.o build/userland/crt0.o build/userland/int.o build/userland/libc.o userland/stdlib.h userland/sh.ld
