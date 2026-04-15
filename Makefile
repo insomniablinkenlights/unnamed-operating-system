@@ -12,16 +12,16 @@ build/%.o: %.S
 	as $< -o $@
 build/%.o: build/%.s
 	as $< -o $@
-
-build/chs.s: chs.c headers/stdint.h headers/standard.h headers/addresses.h
+headers/addresses.h: headers/error_types.h
+build/chs.s: chs.c headers/stdint.h headers/standard.h headers/addresses.h headers/error_types.h
 	$(CC) $(CFLAGS) chs.c -S -o build/chs.s 
-build/page.s: page.c headers/stdint.h headers/addresses.h headers/standard.h headers/proc.h
+build/page.s: page.c headers/stdint.h headers/addresses.h headers/standard.h headers/proc.h headers/error_types.h
 	$(CC) $(CFLAGS) page.c -S -o build/page.s 
-build/malloc.s: malloc.c headers/stdint.h headers/addresses.h headers/standard.h
+build/malloc.s: malloc.c headers/stdint.h headers/addresses.h headers/standard.h headers/error_types.h
 	$(CC) $(CFLAGS) malloc.c -S -o build/malloc.s 
-build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h headers/standard.h headers/usermode.h
+build/proc.s: proc.c headers/proc.h headers/stdint.h headers/addresses.h headers/standard.h headers/usermode.h headers/error_types.h
 	$(CC) $(CFLAGS) proc.c -S -o build/proc.s -Wno-pointer-arith
-build/idt.s: idt.c headers/stdint.h headers/idt.h headers/standard.h headers/addresses.h
+build/idt.s: idt.c headers/stdint.h headers/idt.h headers/standard.h headers/addresses.h headers/error_types.h
 	$(CC) $(CFLAGS) idt.c -S -o build/idt.s 
 build/filesystem.s: filesystem.c headers/string.h headers/ps2.h headers/proc.h headers/terminal.h headers/usermode.h headers/stdint.h headers/addresses.h headers/standard.h headers/filesystem.h headers/device.h headers/perm.h headers/filesystem_internal.h headers/qfs.h
 	$(CC) $(CFLAGS) filesystem.c -S -o build/filesystem.s
@@ -44,9 +44,9 @@ build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h header
 build/perm.s: perm.c headers/perm.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) perm.c -S -o build/perm.s
 build/qfs.s: qfs.c headers/standard.h headers/filesystem_internal.h headers/stdint.h headers/addresses.h headers/chs_qfs.h headers/string.h
-	$(CC) $(CFLAGS) qfs.c -S -o build/qfs.s
+	$(CC) $(CFLAGS) $< -S -o $@
 build/chs_qfs_if.s: chs_qfs_if.c headers/addresses.h headers/stdint.h headers/standard.h headers/chs.h headers/chs_qfs.h
-	$(CC) $(CFLAGS) chs_qfs_if.c -S -o build/chs_qfs_if.s
+	$(CC) $(CFLAGS) $< -S -o $@
 build/sysroot/sbin/init: build/userland/init.o userland/init.ld
 	pushd build/userland && ld -T ../../userland/init.ld && mv ./init.bin ../sysroot/sbin/init && popd
 build/sysroot/sbin/sh: build/userland/sh.o build/userland/crt0.o build/userland/int.o build/userland/libc.o userland/stdlib.h userland/sh.ld
@@ -64,4 +64,19 @@ build/userland/%.s: userland/%.c
 build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h
 	gcc -Wall -Wextra -Wpedantic -Werror -O0 insertFileSystem/main.c -o build/insertFileSystem.out
 clean:
-	rm build/userland/*.o build/userland/*.s build/*.o build/*.s build/*.out build/*.bin build/sysroot/*/*.bin build/sysroot/etc/keymap -v --one-file-system
+	rm build/tests/obj/* build/tests/src/*.C build/tests/src/headers/*.h build/tests/src/*.c build/userland/*.o build/userland/*.s build/*.o build/*.s build/*.out build/*.bin build/sysroot/*/*.bin build/sysroot/etc/keymap -v --one-file-system
+
+test:  build/tests build/tests/obj/qfs
+	pushd build/tests/obj && valgrind --leak-check=full --track-origins=yes ./qfs ../../../floppya.img && popd
+build/tests/obj/%: build/tests/obj/%.o build/tests/obj/%_hook.o
+	gcc $^ -lc -o $@
+build/tests:
+	mkdir -p build/tests/src/headers build/tests/run build/tests/obj
+build/tests/obj/qfs.o: build/tests/src/qfs.c build/tests/src/headers/filesystem_internal.h build/tests/src/headers/stdint.h build/tests/src/headers/addresses.h build/tests/src/headers/chs_qfs.h build/tests/src/headers/string.h build/tests/src/headers/standard.h build/tests/src/headers/hook.h
+	gcc -c $< -Wall -Wextra -Wpedantic -Werror -O0 -o $@
+build/tests/obj/qfs_hook.o: tests/src/qfs_hook.c
+	gcc -c $< -Wall -Wextra -Wpedantic -Werror -O0 -o $@
+build/tests/src/%.c: %.c
+	cp -n $< $@
+build/tests/src/headers/%.h: tests/headers/%.h
+	cp -n $< $@

@@ -1,3 +1,14 @@
+test infrastructure ---
+	- tests/headers -> build/tests/src/headers
+	- qfs -> build/tests/src/
+	mkdir build/tests/run
+	now we will build qfs against build/tests/src/headers, making build/tests/obj/qfs
+	link in the generic test infrastructure and then the specific qfs tester
+	which has a main.c which will do all the testing and return t/f
+	makefile must be updated when headers are
+to test qfs, we need: filesystem_internal, stdint, addresses, chs_qfs, string, and standard
+
+
 let's name the filesystem real quick: QFS (Quick FS), not for speed but for how fast it is to write code for it!
 we have EIGHT HUNDRED LOC in fs.c. This is terrible. 90% of the OS is the filesystem.
 additionally, development times are stunted by the amount of time debugging takes.
