@@ -6,8 +6,8 @@ floppya.img: build/Kernel.bin build/insertFileSystem.out build/sysroot/sbin/init
 	dd if="build/Kernel.bin" of=floppya.img conv=notrunc
 	chmod +x build/insertFileSystem.out
 	cd build && ./insertFileSystem.out
-build/Kernel.bin: build/chs_qfs_if.o build/qfs.o build/perm.o build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o test.ld
-	cd build && ld -T ../test.ld
+build/Kernel.bin: build/chs_qfs_if.o build/qfs.o build/perm.o build/driver.o build/pf.o build/flat.o build/string.o build/ps2.o build/terminal.o build/syscall.o build/usermode.o build/filesystem.o build/memcpy.o build/idt_bridge.o build/malloc.o build/proc.o build/page.o build/asmbridge.o build/idt.o build/chs.o build/pci.o build/longk.o build/protk.o build/end.o build/realk.o build/boot.o build/a20.o main.ld
+	cd build && ld -T ../main.ld
 build/%.o: %.S
 	as $< -o $@
 build/%.o: build/%.s

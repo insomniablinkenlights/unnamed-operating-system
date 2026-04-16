@@ -1,3 +1,15 @@
+to create a file:
+	get an inode# to put it at
+		in ifs we were able to do magic and compress stuff, but in qfs (runtime) we need to check a disk boundary
+		actually no, who cares.
+		so just loop through lba 0-... until found a 000 in
+	get start and end from last used on disk or free space
+	construct an inode*, write it to that inode#
+	find the directory
+	check the space left in the directory
+	if >1, write the # to the directory
+	otherwise, move that directory to something bigger, scan disk for references to it, and rewrite
+
 test infrastructure ---
 	- tests/headers -> build/tests/src/headers
 	- qfs -> build/tests/src/
