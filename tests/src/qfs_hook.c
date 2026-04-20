@@ -37,6 +37,12 @@ void P_FREES(void * v_add, int64_t UNUSED(l)){
 void ERROR(uint64_t code, uint64_t type){
 	printf("error %lu, %lu\n", code, type);
 }
+void BREAK(uint64_t data){
+	printf("BREAK: %lu\n", data);
+	//if(!IsBadReadPtr((void*)data)){
+	printf("uint64_t [0]: %lu\n", *((uint64_t*)data));
+	//}
+}
 void memfill(void * dest, uint64_t count){
 	for(unsigned int i = 0; i<count; i++){
 		((char*)dest)[i] = 0;
@@ -48,6 +54,18 @@ void printInode(inode * k){
 }
 #include <string.h>
 void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len);
+#include "../headers/proc.h"
+void acquire_semaphore(SEMAPHORE * semaphore){
+	semaphore = semaphore;
+}
+void release_semaphore(SEMAPHORE * semaphore){
+	semaphore = semaphore;
+}
+SEMAPHORE * create_semaphore(int max_count){
+	SEMAPHORE * a = malloc(sizeof(SEMAPHORE));
+	a->max_count = max_count;
+	return a;
+}
 int main(int argc, char ** argv){
 	if(argc!=2){
 		printf("[QFS_TEST] need image!\n");
@@ -60,7 +78,7 @@ int main(int argc, char ** argv){
 		}
 	}
 	inode * a = GrabInode(0);
-	char * m [] = {"/etc/keymap", "/sbin/init", "/sbin/sh", "/sbin/echo", NULL};
+	char * m [] = {"/etc/keymap", "/etc/keymap", "/sbin/init", "/sbin/sh", "/sbin/echo", NULL};
 	for(int i = 0; m[i]; i++){
 		inode * k = getFileFromFilename(a, m[i]);
 		printInode(k);
@@ -83,6 +101,7 @@ int main(int argc, char ** argv){
 		free(M);
 		free(M2);
 		free(k);
+		free(v);
 	}
 	free(a);
 	fclose(discimg);

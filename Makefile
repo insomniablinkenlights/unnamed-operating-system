@@ -43,7 +43,7 @@ build/driver.s: driver.c headers/device.h headers/proc.h headers/stdint.h header
 	$(CC) $(CFLAGS) driver.c -S -o build/driver.s
 build/perm.s: perm.c headers/perm.h headers/standard.h headers/addresses.h
 	$(CC) $(CFLAGS) perm.c -S -o build/perm.s
-build/qfs.s: qfs.c headers/standard.h headers/filesystem_internal.h headers/stdint.h headers/addresses.h headers/chs_qfs.h headers/string.h
+build/qfs.s: qfs.c headers/standard.h headers/filesystem_internal.h headers/stdint.h headers/addresses.h headers/chs_qfs.h headers/string.h headers/proc.h
 	$(CC) $(CFLAGS) $< -S -o $@
 build/chs_qfs_if.s: chs_qfs_if.c headers/addresses.h headers/stdint.h headers/standard.h headers/chs.h headers/chs_qfs.h
 	$(CC) $(CFLAGS) $< -S -o $@
@@ -72,7 +72,7 @@ build/tests/obj/%: build/tests/obj/%.o build/tests/obj/%_hook.o
 	gcc $^ -lc -o $@
 build/tests:
 	mkdir -p build/tests/src/headers build/tests/run build/tests/obj
-build/tests/obj/qfs.o: build/tests/src/qfs.c build/tests/src/headers/filesystem_internal.h build/tests/src/headers/stdint.h build/tests/src/headers/addresses.h build/tests/src/headers/chs_qfs.h build/tests/src/headers/string.h build/tests/src/headers/standard.h build/tests/src/headers/hook.h
+build/tests/obj/qfs.o: build/tests/src/qfs.c build/tests/src/headers/filesystem_internal.h build/tests/src/headers/stdint.h build/tests/src/headers/addresses.h build/tests/src/headers/chs_qfs.h build/tests/src/headers/string.h build/tests/src/headers/standard.h build/tests/src/headers/hook.h build/tests/src/headers/proc.h
 	gcc -c $< -Wall -Wextra -Wpedantic -Werror -O0 -o $@
 build/tests/obj/qfs_hook.o: tests/src/qfs_hook.c
 	gcc -c $< -Wall -Wextra -Wpedantic -Werror -O0 -o $@
