@@ -25,7 +25,7 @@ void * readPLUS(uint64_t offset, uint64_t size, uint64_t drive, void * buffer, v
 	}
 	read(lba1, drive, (1+(lba2-lba1))<<9, buffer2);
 	if(!buffer) buffer = malloc(size);
-	memcpy(buffer, ((char*)buffer2)+offset, size);
+	memcpy(buffer, ((char*)buffer2)+(offset&0x1ff), size);
 	if(o_prov) P_FREES(buffer2,((lba2-lba1+1)>>3)+((((lba2-lba1+1))&0x7)?1:0));
 	release_semaphore(disk0);
 	return buffer;
@@ -43,8 +43,9 @@ void writePLUS(uint64_t offset, uint64_t size, uint64_t drive, void * data, void
 		o_prov=1;
 	}
 	read(lba1, drive, (1+(lba2-lba1))<<9, buffer2);
-	memcpy(((char*)buffer2)+offset, data, size);
-	write(lba1, drive, (1+(lba2-lba1))<9, buffer2);
+	memcpy(((char*)buffer2)+(offset&0x1ff), data, size);
+	write(lba1, drive, (1+(lba2-lba1))<<9, buffer2);
+	read(lba1, drive, (1+(lba2-lba1))<<9, buffer2);
 	if(o_prov) P_FREES(buffer2,((lba2-lba1+1)>>3)+((((lba2-lba1+1))&0x7)?1:0));
 	release_semaphore(disk0);
 }
@@ -54,6 +55,13 @@ struct vnode{
 	uint64_t disk;
 	bool exists;
 };
+struct vnode * mkVN(inode * a, int id, int disk){
+	struct vnode * m  = malloc(sizeof(struct vnode));
+	memcpy(&(m->a), a, sizeof(inode));
+	m->id = id;
+	m->disk = disk;
+	return m;
+}
 struct vnode * kINb = NULL;
 uint64_t kINb_sz = 0;
 inode * kINb_gb(uint32_t id){
@@ -62,34 +70,42 @@ inode * kINb_gb(uint32_t id){
 	if(id>=DIV64_32(kINb_sz<<12,s)) return NULL;
 	struct vnode * M = (struct vnode*)(((char*)kINb)+(s*id));
 	if(M->exists){
-		inode * mb = malloc(s);
+		inode * mb = malloc(in_s);
 		memcpy(mb,&( M->a), in_s);
 		return mb;
 	}
 	return NULL;
 }
 inode * kINb_ad(inode * a, uint64_t id){ //MP-BREAK
-	uint64_t s = sizeof(struct vnode);
-	uint64_t in_s = sizeof(inode);
-	if(id>=DIV64_32(kINb_sz<<12,s)){
+	int32_t s = sizeof(struct vnode);
+	int32_t in_s = sizeof(inode);
+	int32_t id2 = id;
+	while(id>=DIV64_32(kINb_sz<<12,s)){
 		struct vnode * kINb2 = KPALLOCS((kINb_sz<<1)+1);
 		//memfill(((char*)kINb2)+(kINb_sz<<12),(kINb_sz+1)<<12);
-		memfill(kINb2, (kINb_sz<<1)+1);
+		memfill(kINb2, ((kINb_sz<<1)+1)<<12);
 		if(kINb) memcpy(kINb2, kINb, kINb_sz<<12);
 		kINb = kINb2;
 		kINb_sz = (kINb_sz<<1)+1;
 	}
-	struct vnode * M = (struct vnode*)(((char*)kINb)+(s*id));
+	struct vnode * M = (struct vnode*)(((char*)kINb)+(s*id2));
 	if(!M->exists){
 		M->exists	=true;
 		M->id = id;
 		M->disk = 0;
 		memcpy(&(M->a), a,in_s);
+	}else{ //TODO: error handling
+		/*BREAK(0x399); //the inode exists already, which is strange because gb should have had it already
+		if(M->a.chunkaddr1 != a->chunkaddr1){
+			BREAK(0x499); //the inodes are different?!
+			BREAK((uint64_t) &(M->a));
+			BREAK((uint64_t)a);
+		}*/
 	}
 	return a;
 }
 void kINb_invalidate(uint64_t id){
-	uint64_t s = sizeof(struct vnode);
+	int32_t s = sizeof(struct vnode);
 	if(id>=DIV64_32(kINb_sz<<12,s)) return;
 	struct vnode * M = (struct vnode*)(((char*)kINb)+(s*id));
 	memfill(M, s);
@@ -99,15 +115,10 @@ inode * GrabInode(uint64_t id){
         int k2 = id;
 	inode * res = NULL;
 	res = kINb_gb(id);
-	//if(k2 == 3){
-	//	BREAK(k2);
-	//	BREAK((uint64_t)res);
-	//}
-	if(!res)
-		res = kINb_ad((inode*)readPLUS((k2)*(r), r, 0, NULL, NULL), id);
-	//if(res->chunkaddr1 != kINb_gb(id)->chunkaddr1){
-	//	BREAK(0x422);
-	//}
+	if(!res){
+		uint64_t m = k2*r; //for some reason the entire code breaks if you don't compute k2*r outside of that call, even if you recompute _in_ the call!
+		res = kINb_ad((inode*)readPLUS(m, r, 0, NULL, NULL), id);
+	}
 	return res;
 }
 void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
@@ -122,19 +133,14 @@ void InodeRead(inode *n, uint64_t position, void * buffer, uint64_t len){
 	release_semaphore(disk0);
 }
 uint64_t getI(uint64_t disk){ //TODO: this breaks if called twice at once.
-	if(!disk0){
-		disk0 = create_semaphore(1);
-	}
-	acquire_semaphore(disk0);
-	void * b = KPALLOC();
+			      //TODO: inefficient
+	int32_t s = sizeof(inode);
+	inode * b = malloc(s);
 	for(int i = 0; ; i++){
-		read(i, disk, 0x400, b);
-		for(uint32_t j = 0; j<DIV64_32(0x200,sizeof(inode)); j++){
-			if(((inode*)b)[j].chunklen == 0){
-				P_FREE(b);
-				release_semaphore(disk0);
-				return j+i*DIV64_32(0x200,sizeof(inode));
-			}
+		b = readPLUS(i*s, s, disk, b, NULL);
+		if(b->chunklen == 0){
+			free(b);
+			return i;
 		}
 	}
 	//Unreachable.
@@ -160,25 +166,30 @@ uint64_t getIS(uint64_t disk, uint64_t size){
 	}
 }
 void writeIN(inode * a, uint64_t disk, uint64_t no){
-	writePLUS(no*sizeof(inode), sizeof(inode), disk, a, NULL);
+	int32_t s = sizeof(inode);
+	writePLUS(no*s, s, disk, a, NULL);
 }
 void addtoD(struct vnode * dir, struct vnode * toadd){ //RLC-BREAK
-	uint64_t * b = read(dir->a.chunkaddr1, dir->disk, dir->a.chunklen, NULL);
+	uint64_t * b = read(dir->a.chunkaddr1, dir->disk, dir->a.chunklen<<9, NULL);
 	int last = 0;
-	for(last = 0; b[last]; last++)
+	for(last = 0; b[last]; last++){}
 	b[last] = toadd->id;
-	write(dir->a.chunkaddr1, dir->disk, dir->a.chunklen, b);
+	write(dir->a.chunkaddr1, dir->disk, dir->a.chunklen<<9, b);
 	kINb_invalidate(dir->id);
-	P_FREES(b, dir->a.chunklen);
+	P_FREES(b, (dir->a.chunklen>>3)+(!!((dir->a.chunklen<<9)&0xfff)));
 }
-struct vnode * mkFile(void * data, uint64_t length, uint64_t disk, char * name, uint16_t perms, struct vnode ** links){
+struct vnode * mkFile(void * data, uint16_t length, uint64_t disk, char * name, uint16_t perms, struct vnode ** links){
 	struct vnode * cons = malloc(sizeof(struct vnode));
-	cons->a.chunkaddr1=getIS(disk, (length>>9)+!!(length&0xFFF));
-	cons->a.chunklen = (length>>9)+!!(length&0xFFF);
+	cons->a.chunkaddr1=getIS(disk, (length>>9)+!!(length&0x1FF));
+	cons->a.chunklen = (length>>9)+!!(length&0x1FF);
 	cons->a.perms = perms;
+	cons->a.owner = 0; cons->a.group=0; cons->a.timestamp=0;
+	cons->disk =disk;
+	cons->exists = true;
 	memfill(cons->a.name, 32);
 	strcpy(cons->a.name, name);
-	writeIN(&(cons->a),disk,getI(disk));
+	cons->id = getI(disk);
+	writeIN(&(cons->a),disk,cons->id);
 	write(cons->a.chunkaddr1, disk, length, data);
 	for(int i = 0; links[i]; i++){
 		//how do we invalidate every reference to a vnode?
@@ -195,9 +206,6 @@ uint64_t FileReaderStream(void * arguments, uint64_t position, void * buffer, ui
 uint64_t FileWriterStream(void * arguments, uint64_t position, void * buffer, uint64_t len){ //RLC-BREAK
         inode * k =*((inode**)arguments); 
         if(position + len < k->chunklen<<9){
-                //char * m = (char*)read(k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?((len&(~0x1FF))+1):len, NULL);
-                //memcpy(m+position, buffer, len);
-                //write(k->chunkaddr1+DIV64_32(position,512), 0x0, (len&0x1FF)?((len&(~0x1FF))+1):len, m);
 		writePLUS((k->chunkaddr1<<9)+position,len,0,buffer,NULL);
         }else{
                 //we have to reallocate the inode, so like about 50% of the contents of insertFileSystem

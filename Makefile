@@ -66,7 +66,11 @@ build/insertFileSystem.out: insertFileSystem/main.c headers/filesystem_compat.h
 clean:
 	rm build/tests/obj/* build/tests/src/*.C build/tests/src/headers/*.h build/tests/src/*.c build/userland/*.o build/userland/*.s build/*.o build/*.s build/*.out build/*.bin build/sysroot/*/*.bin build/sysroot/etc/keymap -v --one-file-system
 
-test:  build/tests build/tests/obj/qfs
+mkfloppy: build/insertFileSystem.out build/sysroot/sbin/init build/sysroot/sbin/sh build/sysroot/sbin/echo build/sysroot/kmod/serial
+	dd if="/dev/zero" of=floppya.img bs=1KiB count=1440
+	chmod +x build/insertFileSystem.out
+	cd build && ./insertFileSystem.out
+test:  mkfloppy build/tests build/tests/obj/qfs
 	pushd build/tests/obj && valgrind --leak-check=full --track-origins=yes ./qfs ../../../floppya.img && popd
 build/tests/obj/%: build/tests/obj/%.o build/tests/obj/%_hook.o
 	gcc $^ -lc -o $@
