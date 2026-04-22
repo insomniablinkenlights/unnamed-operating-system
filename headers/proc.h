@@ -1,6 +1,8 @@
 #include "stdint.h"
+#include "brk.h"
 #ifndef proc
 #define proc
+#include "perm.h"
 struct __attribute__((packed)) TCB_CH;
 typedef struct __attribute__((packed)) thread_control_block {
 	void * rsp; //+0
@@ -22,7 +24,8 @@ typedef struct __attribute__((packed)) thread_control_block {
 	uint64_t pidW; //+92
 	struct thread_control_block * parent;
 	struct TCB_CH * children;
-	uint64_t brk; //a pointer to a usermem struct!
+	prog_mem * brk; //a pointer to a usermem struct!
+	struct perm_desc * perms; 
 } thread_control_block;
 typedef struct __attribute__((packed)) TCB_CH{
 	struct TCB_CH * next;
@@ -40,9 +43,28 @@ void acquire_semaphore(SEMAPHORE * semaphore);
 void release_semaphore(SEMAPHORE * semaphore);
 SEMAPHORE * create_semaphore(int max_count);
 extern thread_control_block * current_task_TCB;
-thread_control_block * create_kernel_task(void startingRIP(void));
-thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments);
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments, struct perm_desc * perms);
 void proc_relent();
 void PROC_EXIT();
 void waitForChildToDie();
+thread_control_block * find_task_by_pid(uint64_t pid);
+void giveSTDIOback(thread_control_block * recipient, thread_control_block * donor, int dfdn);
+void unblock_task(thread_control_block * task);
+void block_task(uint8_t reason);
+void unblock_child(uint64_t m);
+thread_control_block * find_child_by_pid(uint64_t m);
+void uwait(uint64_t m);
+enum task_states {
+	STATE_RUNNING = 0,
+	STATE_READY,
+	STATE_WAITING = 2,
+	STATE_DEAD = 3,
+	STATE_PAUSED = 4,
+	STATE_WAITING_FOR_IRQ,
+	STATE_WAITING_FOR_PROC_UPDATE, //unused
+	STATE_WAITING_FOR_LOCK,
+	STATE_WAITING_FOR_POKE,
+	STATE_WAITING_FOR_DEATH,
+	STATE_BURIED
+};
 #endif

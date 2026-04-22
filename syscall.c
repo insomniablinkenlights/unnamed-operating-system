@@ -1,4 +1,6 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
+#include "headers/device.h"
 #include "headers/usermode.h"
 #include "headers/addresses.h"
 #include "headers/filesystem.h"
@@ -37,36 +39,15 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			if(k==NULL){
 				ERROR(ERR_BINFMT_BROKEN, (uint64_t)k);
 			}
-			if(rsi & 0xfff){
-				if(k->end & 0xfff){
-					if(((k->end&0xfff)+rsi)<0x1000){
-						k->end += rsi;
-					}else{ //i don't wanna support this shit
-						ERROR(ERR_TODO_SBRK, rsi);
-					}
-					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
-					k->end += rsi;
-				}else{
-					UPALLOC(0x2, (char*)(k->end), (rsi>>12)+1);
-					k->end+=rsi;
-				}
-			}else{
-				if(k->end & 0xfff){
-					UPALLOC(0x2, (char*)(((k->end&(~0xFFF))+0x1000)), rsi>>12);
-					k->end += rsi;
-				}else{
-					UPALLOC(0x2,(char*)( k->end), rsi>>12);
-					k->end += rsi;
-				}	
-			}
+			k->end += rsi; //we'll always trigger a pagefault but now we can handle those !!
 			rV = k->end;
 			break;
 		case 0x6: //tell
 			rV = TELL(rsi);
 			break;
 		case 0x7: //exec
-			//for this, arguments need to be added to cktask?
-			rV = ExecFile(VERIFY_USER((void*)rsi), rdx, VERIFY_USER((void*)rcx)); //TODO: verify file
+			rV = ExecFile(VERIFY_USER((void*)rsi), VERIFY_USER((void*)rdx), VERIFY_PERMS_EXEC((void*)rcx)); //TODO: verify file
+			//we want to verify that we can execute the file, and get the perms that we'll be giving it.
 			break;
 		case 0x8: //bind
 			BIND_HANDLES(rsi, rdx);
@@ -78,6 +59,56 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 			ERROR(ERR_DEADCODE, 0);
 			rV = -1; //should NOT get to this statement!
 			break;
+		case 0xa:
+			//wait
+			waitForChildToDie();
+			rV = 0;
+			break;
+		case 0xb:
+			BINDR(find_child_by_pid(rsi), rdx);
+			rV = 0;
+			break;
+		case 0xc: //signal child
+			//rsi == pid of c
+			unblock_child(rsi);
+			rV = 0;
+			break;
+		case 0xd:
+			if(current_task_TCB->PL == 2){
+				d0xD((void*)rsi); //this changes some of the assumptions we make...
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0xe:
+			if(current_task_TCB->PL == 2){
+				d0xE(rsi, (void *)rdx);
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0xf:
+			if(current_task_TCB->PL == 2){
+				wait_for_irq(rsi, 0, NULL);
+				PIC_sendEOI(rsi);
+				rV = 0;
+			}else{
+				rV = -1;
+			}
+			break;
+		case 0x10: //check stream
+			rV = checkStream(rsi);
+			break;
+		case 0x11: //unblock and wait
+			uwait(rsi);
+			rV = 0;
+			break;
+		case 0x12:
+			nano_sleep(rsi);
+			rV = 0;
+			break;
 		default:
 			ERROR(ERR_INT, rdi);
 			rV = -1;
@@ -87,5 +118,4 @@ uint64_t INT0x80C(uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx){ //int
 	P_FREE(newrsp0);
 	loadRSP0((uint64_t)oldrsp0);
 	return rV;
-
 }

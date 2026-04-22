@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 #include "headers/proc.h"
 #include "headers/usermode.h"
@@ -61,18 +62,6 @@ void lock_stuff(){
 	postpone_task_switches_counter++;
 #endif
 }
-enum task_states {
-	STATE_RUNNING = 0,
-	STATE_READY,
-	STATE_WAITING,
-	STATE_DEAD,
-	STATE_PAUSED,
-	STATE_WAITING_FOR_IRQ,
-	STATE_WAITING_FOR_PROC_UPDATE,
-	STATE_WAITING_FOR_LOCK,
-	STATE_WAITING_FOR_POKE,
-	STATE_WAITING_FOR_DEATH
-};
 uint64_t get_time_since_boot(){
 	return TIME;
 }
@@ -131,12 +120,15 @@ void initialize_multitasking(){
 	current_task_TCB->kernelFdLen = 0x0;
 	current_task_TCB->parent = NULL;
 	current_task_TCB->children = NULL;
-current_task_TCB->brk = 0x0;
+current_task_TCB->brk = NULL;
+	current_task_TCB->perms = malloc(sizeof(struct perm_desc));
+	current_task_TCB->perms->t_root = NULL;
 	FIRST_THREAD=NULL;
 	LAST_THREAD=NULL;
 //	FIRST_THREAD=current_task_TCB;
 //	LAST_THREAD=current_task_TCB;
 }
+void FLUSH_TLB();
 void switch_to_task_wrapper(thread_control_block * task){
 	if(postpone_task_switches_counter != 0){
 		task_switches_postponed_flag = 1;
@@ -148,11 +140,11 @@ void switch_to_task_wrapper(thread_control_block * task){
 		if(current_task_TCB->state == STATE_READY){
 			ERROR(ERR_SHOULD_NOT_BE_READY2, (uint64_t)current_task_TCB);
 		}
-		if(current_task_TCB->state == STATE_DEAD){
+		/*if(current_task_TCB->state == STATE_DEAD){
 			//add to the reaper list
 			current_task_TCB->next = DEAD_TASKS;
 			DEAD_TASKS=current_task_TCB;
-		}
+		}*/
 		if(FIRST_THREAD==NULL && current_task_TCB->state != STATE_RUNNING){ //if we have only blocked tasks
 			time_slice_remaining = 0;
 		}else{
@@ -162,6 +154,13 @@ void switch_to_task_wrapper(thread_control_block * task){
 	update_time_used();
 	//free dead task's stuff IN stt
 	//switch fd?
+	//if(task->PL ==3)
+	FLUSH_TLB(); //this should be INSIDE the stt func but it should be fineee
+	if(task->PL == 0x2){
+		lIOPL(0x3);
+	}else{
+		lIOPL(0x0);
+	}
 	loadRSP0((uint64_t)(task->rsp0));
 	switch_to_task(task);
 }
@@ -195,16 +194,14 @@ void murderChild(thread_control_block * missing_eight_year_old_white_girl){ //Us
 		prev->next = victims->next;
 	}
 	//Alert the mother that her daughter has died.
-	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH){ //Psychopathic mother.
+	if(single_mother_of_3->state != STATE_WAITING_FOR_DEATH || missing_eight_year_old_white_girl->state==STATE_BURIED){ //Psychopathic mother or corpse buried already.
 	}else{
+		//If the mother is illiterate, we can give her a pencil found on the body of her daughter:
+		giveSTDIOback(single_mother_of_3, missing_eight_year_old_white_girl, 0);
 		unblock_task(single_mother_of_3);
 	}
 }
-thread_control_block * create_kernel_task(void startingRIP(void)){
-	//deprecating it
-	return ckprocA((void (*) (void *))startingRIP, NULL);
-}
-thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments){
+thread_control_block * ckprocA(void startingRIP(void * arguments), void * arguments, struct perm_desc * perms){
 	thread_control_block * M = malloc(sizeof(thread_control_block));
 	void * M2 = KPALLOC();
 	//lowkey i think this is the error
@@ -229,7 +226,8 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->pidW = 0;
 	M->children = NULL;
 	M->parent = NULL;
-	M->brk = 0;
+	M->brk = NULL;
+	M->perms = perms;
 	appendChild(current_task_TCB, M);
 	*(uint64_t*)(((char*)M2+0xFF8)) = (uint64_t)startingRIP; //this should be the last one we pop!
 	*(uint64_t*)(((char*)M2+0xFE0)) = (uint64_t)arguments; //this should be the second one we pop!
@@ -244,17 +242,21 @@ thread_control_block * ckprocA(void startingRIP(void * arguments), void * argume
 	M->time_used=0x0;
 	return M;
 }
-void reap(){
+void reap(){ //thread unsafe!
 	thread_control_block * task = DEAD_TASKS;
 	while(task != NULL){
-		BREAK((uint64_t)task);
+		//BREAK((uint64_t)task);
 		//free the stack somehow? doesn't work for the first task though
 		if(task->parent) murderChild(task);
 		if(task->file_descriptors) P_FREE(task->file_descriptors);
-		if(task->cr3) P_FREE(task->cr3);
+		if(task->cr3) P_FREE(task->cr3); //something tells me this is a shitty way to do it!
 		//vaddsp is unused
 		thread_control_block * next = task->next;
 		//free(task); //this doesn't work for the first task!
+		if(task->pid != 0x0){
+		//	BREAK(task->pid);
+			free(task);
+		}
 		task = next;
 	}
 	DEAD_TASKS = NULL;
@@ -281,9 +283,14 @@ void schedule(){
 //	if(current_task_TCB == NULL){
 //		asm volatile("xchgw %bx, %bx; call FAULT");
 //	}
-	reap();
 	if(current_task_TCB->state == STATE_READY){
 		ERROR(ERR_SHOULD_NOT_BE_READY3, (uint64_t) current_task_TCB);
+	}
+	reap(); //if we do it after the next bit, we'll run into issues because current_task_TCB will be nonnull but also not point to anything valid. Reap also has issues in the case of various 'waiter' structs such as semaphores, where it will get rid of a task but not remove references to it. The two options here are to either never free things and rewrite **all** waiters to check that a task is dead, or to have a centralised list of every waiter referring to a task. Both are **horrible** performance-wise...
+	if(current_task_TCB->state == STATE_DEAD){
+			//add to the reaper list
+			current_task_TCB->next = DEAD_TASKS;
+			DEAD_TASKS=current_task_TCB;
 	}
 	if(FIRST_THREAD != NULL){
 		task = FIRST_THREAD;
@@ -291,9 +298,13 @@ void schedule(){
 		switch_to_task_wrapper(task);
 	}else if(current_task_TCB->state == STATE_RUNNING){
 		//do nothing, just continue...
+	}else if(current_task_TCB->state == STATE_DEAD && current_task_TCB->parent->state == STATE_WAITING_FOR_DEATH){
+		current_task_TCB->state = STATE_BURIED;
+		giveSTDIOback(current_task_TCB->parent, current_task_TCB, 0);
+		switch_to_task_wrapper(current_task_TCB->parent);
 	}
 	else{
-		//when we unblock the task we co-opted, we're screwed...
+		//wait for a task to make its appearance. However, if there are only two tasks and one of them is waiting for us to die, then we should notify them and kill ourselves on the spot. Fun!
 		task=current_task_TCB;
 		if(task->state == STATE_READY){
 			ERROR(ERR_SHOULD_NOT_BE_READY, (uint64_t) task); //because we would have been on first thread
@@ -392,8 +403,14 @@ void sleep(uint64_t t){
 	t=t*1000000000; //TODO: broken for no fucking reason
 	nano_sleep(t);
 }
+uint64_t irqscalled = 0x0;
 void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	lock_stuff();
+	if(irqscalled&(1<<irq)){
+		irqscalled &= ~(1<<irq);
+		unlock_stuff();
+		return;
+	}
 	current_task_TCB->irq_waiting_for = irq;
 	current_task_TCB->next=irqwaiting;
 	if(timeout == 0x0){
@@ -406,6 +423,7 @@ void wait_for_irq(uint8_t irq, uint64_t timeout, void timeout_function(void)){
 	unlock_stuff();
 	block_task(STATE_WAITING_FOR_IRQ); //for some reason we never switch back!
 }
+uint64_t irqcallblock = 0x0; //UNUSED
 void unblockirq(uint8_t irq){
 	thread_control_block * next_task;
 	thread_control_block * this_task;
@@ -425,7 +443,8 @@ void unblockirq(uint8_t irq){
 		}
 	}
 	if(!haveweunblocked){
-		ERROR(ERR_HAVENT_UNBLOCKED, irq);
+		irqscalled |= (1<<irq);
+		//ERROR(ERR_HAVENT_UNBLOCKED, irq);
 	}
 	unlock_stuff();
 }
@@ -455,6 +474,7 @@ thread_control_block * find_task_by_pid(uint64_t pid){ //doesn't work for tasks 
 		if((task->pid | ((uint64_t)1<<63)) == pid) return task;
 		task = task->next;
 	}
+	ERROR(ERR_PID_NOT_FOUND, pid);
 	return NULL;
 }
 /*this might end up useless
@@ -521,7 +541,7 @@ void PokeT(thread_control_block **p){
 		unblock_task(*p);
 		*p = NULL;
 	}else{
-		BREAK((uint64_t)p);
+		BREAK(0x48288);
 	}
 //	BREAK((uint64_t)FIRST_THREAD);
 //	BREAK((uint64_t)current_task_TCB);
@@ -550,7 +570,6 @@ int wait_for_procupdate(uint64_t pid, uint64_t timeout){
 }
 void unblockP(uint64_t pid){
 	thread_control_block * task = procwaiting;
-	thread_control_block * next = NULL;
 	uint64_t K = pid ^ ((uint64_t)1<<63);
 	if(pid & (uint64_t)1<<63){
 		lock_stuff();
@@ -624,4 +643,28 @@ void PROC_EXIT(){
 	//unblock scheduling
 	unlock_scheduler();
 	schedule();
+}
+void unblock_child(uint64_t m){
+	TCB_CH * w = current_task_TCB->children;
+	while(w != NULL){
+		if(w->ch->pid == m)
+			unblock_task(w->ch);
+		w=w->next;
+	}
+}
+void uwait(uint64_t m){ //no fucking clue how this works
+	lock_scheduler();
+	unblock_child(m);
+	waitForChildToDie();
+	unlock_scheduler();
+}
+thread_control_block * find_child_by_pid(uint64_t m){
+	TCB_CH * w = current_task_TCB->children;
+	while(w != NULL){
+		if(w->ch->pid == m)
+			return w->ch;
+		w=w->next;
+	}
+	ERROR(ERR_FCPID, m);
+	return NULL;
 }

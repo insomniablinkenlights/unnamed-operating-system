@@ -1,0 +1,56 @@
+to create a file:
+	get an inode# to put it at
+		in ifs we were able to do magic and compress stuff, but in qfs (runtime) we need to check a disk boundary
+		actually no, who cares.
+		so just loop through lba 0-... until found a 000 in
+	get start and end from last used on disk or free space
+	construct an inode*, write it to that inode#
+	find the directory
+	check the space left in the directory
+	if >1, write the # to the directory
+	otherwise, move that directory to something bigger, scan disk for references to it, and rewrite
+
+test infrastructure ---
+	- tests/headers -> build/tests/src/headers
+	- qfs -> build/tests/src/
+	mkdir build/tests/run
+	now we will build qfs against build/tests/src/headers, making build/tests/obj/qfs
+	link in the generic test infrastructure and then the specific qfs tester
+	which has a main.c which will do all the testing and return t/f
+	makefile must be updated when headers are
+to test qfs, we need: filesystem_internal, stdint, addresses, chs_qfs, string, and standard
+
+
+let's name the filesystem real quick: QFS (Quick FS), not for speed but for how fast it is to write code for it!
+we have EIGHT HUNDRED LOC in fs.c. This is terrible. 90% of the OS is the filesystem.
+additionally, development times are stunted by the amount of time debugging takes.
+if we had a userspace stub for a lot of OS calls (e.g. KPALLOC and so on) we could debug faster and fix memory leaks!
+
+os needs implementations of a lot of library calls detailed in ifs/main, additionally dirent
+	it's a bit of a catch-22 considering that writing things needs support for writing things
+better filesystem support ---
+code duplication between IFS and FSC
+I think the best thing to do here is move the FS support out of FS.c and merge it with some of the structures in insert. In order to do that I think I want to first port IFS to run on the OS too.
+
+
+i should move to unions in some of the internal filesystem structs
+i should also fix the makefile headers
+
+so we'll have rootstreams
+todo: prevent two processes from opening same inode at once
+todo: make write calls able to resize inodes
+
+kernel buffering
+
+
+disk scanning
+abstraction over inode
+	file cache
+	drive numbers
+make UPALLOC zero-initialise
+close stdios and streams and shit when a prockses clsoerns
+	hack done-ish
+figure out /dev so we can do /dev/tty or /dev/com or whatnot
+	hack done: made a stub for if the directory is /dev
+user privs, directories
+process errors

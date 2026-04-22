@@ -1,12 +1,14 @@
+#include "headers/standard.h"
 #include "headers/stdint.h"
+#include "headers/string.h"
 #include "headers/addresses.h"
 #include "headers/flat.h"
 #include "headers/proc.h"
 #include "headers/brk.h"
 //flat binary format
 void alseg(uint64_t VADD, uint64_t END, uint64_t START, char* fi){
-	uint64_t text_off = VADD&0xFFF;
 	uint64_t text_size = END-START;
+/*	uint64_t text_off = VADD&0xFFF;
 	uint64_t text_size_pages = 0;
 	if(text_off == 0){
 		if(text_size&0xFFF){
@@ -15,16 +17,27 @@ void alseg(uint64_t VADD, uint64_t END, uint64_t START, char* fi){
 			text_size_pages = text_size>>12;
 		}
 	}else{ //offset and size offset can end up adding up to anywhere from 1 to 1FFE! we need to see if we need to allocate one or two pages
-		text_size_pages = (text_size>>12)+((text_size&0xFFF)+((text_off >0x1000)?2:1));
+		text_size_pages = (text_size>>12)+(((((text_size&0xFFF)+text_off) >0x1000)?2:1));
 	}
-	UPALLOC(2, (void*)(VADD^text_off), text_size_pages);
-	memcpy((void*)(VADD), ((char*)fi)+START, text_size);
+//	BREAK(VADD^text_off);
+//	BREAK(text_size_pages);
+	if(text_size_pages == 0x0){
+		ERROR(ERR_ALSEG_LOGFAIL, text_size_pages);
+	}
+	UPALLOC(2, (void*)(VADD^text_off), text_size_pages);*/
 	((prog_mem*)(current_task_TCB->brk))->start = MIN(VADD, (((prog_mem*)(current_task_TCB->brk))->start));
 	((prog_mem*)(current_task_TCB->brk))->end = MAX(VADD+END-START, (((prog_mem*)(current_task_TCB->brk))->end));
+	memcpy((void*)(VADD), ((char*)fi)+START, text_size);
 }
-void * PF(void * fi, uint64_t filesize){
+void * PF(void * fi, uint64_t filesize, char * arguments, int * argv){
 	//fi is in kernel memory
 	PFH * M = (PFH*)fi;
+	if(current_task_TCB->brk == 0x0){
+		//todo: make a new brk!!!!!
+		current_task_TCB->brk = malloc(sizeof(prog_mem));
+		((prog_mem*)current_task_TCB->brk)->start = CBASE;
+		((prog_mem*)current_task_TCB->brk)->end = 0;
+	}
 	//check everything
 //	BREAK(0x2472);
 	uint8_t TEXT_EXISTS = 0;
@@ -57,9 +70,9 @@ void * PF(void * fi, uint64_t filesize){
 	}
 	if(M->BSS_SIZE){
 		if(M->BSS_VADD+M->BSS_SIZE<CBASE){
-			if(!(M->BSS_VADD & 0xFFF)){
+		//	if(!(M->BSS_VADD & 0xFFF)){
 				BSS_EXISTS=1;
-			}
+		//	}
 		}
 	}
 	//TODO: check for overlap between all three sections
@@ -70,7 +83,19 @@ void * PF(void * fi, uint64_t filesize){
 		alseg(M->DATA_VADD, M->DATA_END, M->DATA_START, fi);
 	}
 	if(BSS_EXISTS){
-		UPALLOC(2, (void*)(M->BSS_VADD), MAX(1,(M->BSS_SIZE)>>12));
+		((prog_mem*)(current_task_TCB->brk))->start = MIN(M->BSS_VADD, (((prog_mem*)(current_task_TCB->brk))->start));
+		((prog_mem*)(current_task_TCB->brk))->end = MAX(M->BSS_VADD+M->BSS_SIZE, (((prog_mem*)(current_task_TCB->brk))->end));
+		//UPALLOC(2, (void*)(M->BSS_VADD), MAX(1,(M->BSS_SIZE)>>12));
+	}
+	unsigned int k = strlen(arguments)+1;
+	if(current_task_TCB->brk->start > k){
+		current_task_TCB->brk->start -= k;
+		memcpy((void*)(current_task_TCB->brk->start), arguments, k);
+		*argv = current_task_TCB->brk->start;
+	}else{
+		current_task_TCB->brk->end += k;
+		memcpy((void*)(current_task_TCB->brk->end - k), arguments, k);
+		*argv = current_task_TCB->brk->end - k;
 	}
 	return (void*)(M->TEXT_VADD);
 }

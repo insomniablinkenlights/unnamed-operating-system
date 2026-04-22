@@ -8,6 +8,19 @@ int strcmp(char * a, char * b){
 	}
 	return a[i]-b[i];
 }
+int strlen(const char * a){
+	int i = 0;
+	for(;a[i];i++);
+	return i;
+}
 int checkCorruption(){
 	return 0xb339b009;
+}
+void strcpy(char * to, const char * from){
+/* THE FOLLOWING CODE PRESERVED FOR FUTURE
+GENERATIONS TO COME AS A REMINDER OF SIN*/
+/*	while(from++)*(to++)=*from;     */
+	for(int i = 0; from[i]; i++){
+		to[i] = from[i];
+	}
 }

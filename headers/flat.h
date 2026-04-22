@@ -11,5 +11,5 @@ typedef struct __attribute__((packed)){
 	uint64_t BSS_SIZE;
 	uint64_t BSS_VADD;
 }PFH;
-void * PF(void * fi, uint64_t filesize);
+void * PF(void * fi, uint64_t filesize, char * arguments, int * argv);
 #endif

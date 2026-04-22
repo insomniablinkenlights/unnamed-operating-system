@@ -1,5 +1,7 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
+#include "headers/proc.h"
 #define PTV_MEMORYOVERHEAD 0
 void FLUSH_TLB();
 void FLUSH_TLB2();
@@ -73,6 +75,7 @@ void * KPALLOC(){ // THIS FUNCTION BREAKS IF CALLED TWICE
 			}
 		}
 	}
+	memfill((void*)k, 0x1000);
 	return (void*)k;
 }
 void * KPALLOCS(int64_t size){
@@ -283,7 +286,7 @@ void ALSP(void * v_add, uint8_t flags, uint8_t magic1, uint8_t magic2){
 
 }
 void * UP_ALLOC4(uint8_t flags, void * initial, int64_t size_pages){
-	if(size_pages == 0) ERROR(ERR_AL_NOP, size_pages);
+	if(size_pages == 0) ERROR(ERR_UAL_NOP, size_pages);
 	if((uint64_t)(initial)+0x1000*size_pages > CBASE || (uint64_t)initial&0xfff){
 		ERROR(ERR_UPA_BIN, (uint64_t) initial);
 	}
@@ -313,15 +316,15 @@ void * KP_ALLOC4(int64_t size_pages){
 	char * ini =(char*) MBASE;
 	int64_t s = 0;
 	while(s != size_pages){
-		if(doesPDEEExist(ini+0x1000*s)){
+		if(doesPDEEExist(ini+(s<<12))){
 			s++;
 		}else{
-			ini=ini+0x1000*s;
+			ini=ini+((s+1)<<12);
 			s=0;
 		}
 	}
 	for(s = 0; s<size_pages; s++){
-		ALSP(ini+0x1000*s, 0x0, 0x1, 0x1);
+		ALSP(ini+(s<<12), 0x0, 0x1, 0x1);
 	}
 	return ini;
 }
@@ -431,7 +434,7 @@ void P_FREE(void * v_add){
 	uint64_t pdpt =( ((uint64_t)v_add)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
 	uint64_t pml4 = (((uint64_t)v_add)&(0x200*0x200*0x200*(uint64_t)0x1ff000))>>(12+9*3);
 	PL_SV(V2P(v_add)>>12, 0x0);
-	memfill(v_add, 0x1000); //initialise the memory again
+//	memfill(v_add, 0x1000); //initialise the memory again
 	get_pdeVP(pml4,pdpt,pde)[pt] = 0x0;
 	/*if(pt == 0){ //this is stupid. why did i do this.
 		get_pdptVP(pml4,pdpt)[pde] = 0x0; 
@@ -442,7 +445,7 @@ void P_FREE(void * v_add){
 }
 void P_FREES(void*v_add, int64_t l){
 	if(l < 1){
-		ERROR(ERR_AL_NOP, l);
+		ERROR(ERR_AL_NOP_FREE, l);
 	}
 	for(int i = 0; i<l; i++){
 		P_FREE(((char*)v_add) +(i<<12));
@@ -459,7 +462,9 @@ void U_PFREEALL(){
 	//loop through pdpt -> pde -> pt, free, free, free
 	//everything in UM belongs to our proc because mmio isn't implemented yet
 	//tables need to have the memory which allocates the TABLE freed followed by the top level entry which points to the table AS a table
-	for(int pdpt = 0; pdpt<512; pdpt++){
+	uint64_t endpdpt = (( ((uint64_t)current_task_TCB->brk->end)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9))+1;
+	uint64_t startpdpt = ( ((uint64_t)current_task_TCB->brk->start)&(0x200*0x200*(uint64_t)0x1ff000))>>(12+9+9);
+	for(unsigned int pdpt = startpdpt; pdpt<endpdpt; pdpt++){
 		if((get_pdptV(0, pdpt)&0x1) != 0x0){
 			for(int pde = 0; pde<512; pde++){
 				if((get_pdeV(0, pdpt, pde)&0x1) != 0x0){

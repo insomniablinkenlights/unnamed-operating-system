@@ -1,4 +1,5 @@
 #include "headers/stdint.h"
+#include "headers/standard.h"
 #include "headers/addresses.h"
 uint64_t * ml1; 
 /*
@@ -18,7 +19,7 @@ void * malloc(uint64_t size){
 	if(MOD64_32(size,64)){
 		size+=64-MOD64_32(size,64);
 	}
-	if(size>4096-64){
+	if(size>=4096-64){
 		ERROR(ERR_MALLOC_SIZEMAX, 0x0); //TODO: malloc would need to rearrange the pages
 	}
 	size = DIV64_32(size, 64); //size is in 8quads now :3
